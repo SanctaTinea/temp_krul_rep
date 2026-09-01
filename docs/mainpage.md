@@ -19,10 +19,10 @@ CRC для JSON, BSON и CBOR, не выполняя ввод-вывод сам�
 Начните со следующих разделов:
 
 - @ref getting_started — минимальная рабочая конфигурация и команда;
-- @ref json_protocol_v3 — нормативная спецификация JSON-протокола версии 3;
+- @ref json_protocol_v4 — нормативная спецификация Krul версии 4;
+- @ref cbor_protocol_v4 — неканоническое CBOR-отображение версии 4;
 - @ref request_lifecycle — полный путь запроса и ответа;
 - @ref transport_v1 — framing `KRJ1`/`KRB1`/`KRC1`, длина и CRC;
-- @ref cbor_protocol_v3 — compact CBOR with numeric map keys (`KRC1`);
 - @ref krul — API команд;
 - @ref serde — не зависящий от формата API сериализации;
 - @ref serde_json — входящий в комплект JSON-кодек.

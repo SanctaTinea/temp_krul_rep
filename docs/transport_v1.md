@@ -2,7 +2,7 @@
 
 `KRC1` is the compact-CBOR transport variant. It uses the same length, CRC,
 10 KiB limit, response-codec selection, and stream resynchronization rules as
-`KRJ1` and `KRB1`. Its payload mapping is defined in @ref cbor_protocol_v3;
+`KRJ1` and `KRB1`. Its payload mapping is defined in @ref cbor_protocol_v4;
 stream receivers search for all three magic values.
 
 Этот документ задаёт двоичное обрамление одного готового payload Krul для

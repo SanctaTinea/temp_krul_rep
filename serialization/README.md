@@ -42,7 +42,7 @@ signed `int32` document length в начале самого payload.
 Встроенный heap-free CBOR-кодек инициализируется через `serde_cbor_init()` и
 выбирается через `serde_cbor()`. Он читает узлы напрямую из входного буфера и
 пишет map/array неопределённой длины. Для компактных map-ключей используется
-`serde_key_t.tag`; правила Krul-профиля описаны в `Libs/docs/cbor_protocol_v3.md`.
+`serde_key_t.tag`; правила Krul-профиля описаны в `Libs/docs/cbor_protocol_v4.md`.
 
 Чтобы добавить другой двоичный формат, реализуйте `serde_codec_mtab_t` и
 `serde_writer_mtab_t`. Вносить зависящие от кодека изменения в Krul и

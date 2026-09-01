@@ -184,6 +184,36 @@ bool krul_result_put_bool(krul_result_t* result, const char* name, bool value) {
     return true;
 }
 
+bool krul_result_put_enum(krul_result_t* result, const char* name,
+                          int32_t value) {
+    const krul_field_desc_t* field =
+        result_prepare(result, name, KRUL_TYPE_ENUM);
+    if (field == NULL) return false;
+    bool matched = false;
+    for (uint16_t index = 0U;
+         index < field->constraints.enumeration.count; ++index) {
+        if (value == field->constraints.enumeration.values[index].value) {
+            matched = true;
+            break;
+        }
+    }
+    if (!matched) {
+        krul_result_fail(result, "Handler returned invalid enum field '%s'",
+                         krul_field_name(field));
+        return false;
+    }
+    if (!validate_direct_result(result, field,
+                                (krul_value_ref_t){.value.i32 = value}))
+        return false;
+    serde_key_t key;
+    if (!serde_put_i32(result->writer, result_key(field, &key), value)) {
+        krul_result_fail(result, "Serializer rejected field '%s'",
+                         krul_field_name(field));
+        return false;
+    }
+    return true;
+}
+
 bool krul_result_put_string(krul_result_t* result, const char* name,
                         const char* value) {
     if (result == NULL || result->failed || result->depth == 0U || value == NULL)
@@ -195,7 +225,6 @@ bool krul_result_put_string(krul_result_t* result, const char* name,
             : krul_find_field(frame->fields, frame->field_count, name, NULL);
     if (candidate == NULL ||
         (candidate->type != KRUL_TYPE_STRING &&
-         candidate->type != KRUL_TYPE_ENUM &&
          candidate->type != KRUL_TYPE_CONSOLE_STRING)) {
         krul_result_fail(result, "Handler returned wrong string field '%s'",
                          name != NULL ? name : "array item");
@@ -206,36 +235,17 @@ bool krul_result_put_string(krul_result_t* result, const char* name,
     if (field == NULL) return false;
     size_t length = strlen(value);
     if (field->has_constraints) {
-        if (field->type == KRUL_TYPE_ENUM) {
-            bool matched = false;
-            for (uint16_t index = 0U;
-                 index < field->constraints.enumeration.count; ++index) {
-                if (strcmp(value,
-                           field->constraints.enumeration.values[index].value) ==
-                    0) {
-                    matched = true;
-                    break;
-                }
-            }
-            if (!matched) {
-                krul_result_fail(result,
-                                 "Handler returned invalid enum field '%s'",
-                                 krul_field_name(field));
-                return false;
-            }
-        } else {
-            uint16_t minimum = field->type == KRUL_TYPE_STRING
-                                   ? field->constraints.string.min_length
-                                   : 0U;
-            uint16_t maximum = field->type == KRUL_TYPE_STRING
-                                   ? field->constraints.string.max_length
-                                   : field->constraints.console.max_length;
-            if (length < minimum || length > maximum) {
-                krul_result_fail(
-                    result, "Handler returned invalid length for field '%s'",
-                    krul_field_name(field));
-                return false;
-            }
+        uint16_t minimum = field->type == KRUL_TYPE_STRING
+                               ? field->constraints.string.min_length
+                               : 0U;
+        uint16_t maximum = field->type == KRUL_TYPE_STRING
+                               ? field->constraints.string.max_length
+                               : field->constraints.console.max_length;
+        if (length < minimum || length > maximum) {
+            krul_result_fail(
+                result, "Handler returned invalid length for field '%s'",
+                krul_field_name(field));
+            return false;
         }
     }
     if (!validate_direct_result(result, field,

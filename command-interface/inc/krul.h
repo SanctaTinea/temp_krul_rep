@@ -104,9 +104,9 @@ typedef enum {
 /** Одно значение в канале связи и его необязательный человекочитаемый заголовок. */
 typedef struct {
     /* value передаётся по wire, title предназначен только для интерфейса. */
-    // value - настоящее значение в JSON и прошивке
+    // value - стабильный числовой код в JSON/BSON/CBOR и прошивке
     // title - человекочитаемая подпись для GUI
-    const char* value;
+    int32_t value;
     const char* title;
 } krul_enum_value_t;
 
@@ -698,9 +698,13 @@ bool krul_user_validator_get_f32(const krul_value_ref_t* value, float* output);
  */
 bool krul_user_validator_get_bool(const krul_value_ref_t* value, bool* output);
 
+/** Read a numeric enum code for a custom validator. */
+bool krul_user_validator_get_enum(const krul_value_ref_t* value,
+                                  int32_t* output);
+
 /**
  * @brief Скопировать строковое значение для пользовательского ограничения.
- * @param value Ссылка ограничения типа STRING, ENUM или CONSOLE_STRING.
+ * @param value Ссылка ограничения типа STRING или CONSOLE_STRING.
  * @param output Место назначения декодированной строки с завершающим нулём.
  * @param capacity Размер места назначения с учётом завершающего нуля.
  * @return `true`, если полное значение помещается и доступно для чтения.
@@ -759,10 +763,14 @@ bool krul_args_get_f32(const krul_args_t* args, const char* name, float* value);
  */
 bool krul_args_get_bool(const krul_args_t* args, const char* name, bool* value);
 
+/** Read a validated numeric enum parameter or its default. */
+bool krul_args_get_enum(const krul_args_t* args, const char* name,
+                        int32_t* value);
+
 /**
  * @brief Скопировать проверенный строковый параметр команды.
  * @param args Заимствованные аргументы текущего обработчика.
- * @param name Точное имя параметра STRING, ENUM или CONSOLE_STRING.
+ * @param name Точное имя параметра STRING или CONSOLE_STRING.
  * @param output Место назначения значения или default с завершающим нулём.
  * @param capacity Размер места назначения с учётом завершающего нуля.
  * @return `true`, если полное именованное значение помещается и читается.
@@ -805,6 +813,10 @@ size_t krul_array_get_size(const krul_array_t* array);
 bool krul_array_get_string(const krul_array_t* array, size_t index,
                            char* output, size_t capacity);
 
+/** Read a validated numeric enum array element. */
+bool krul_array_get_enum(const krul_array_t* array, size_t index,
+                         int32_t* value);
+
 /**
  * @brief Получить учитывающее схему представление объекта из элемента массива.
  * @param array Заимствованное представление массива со схемой элементов OBJECT.
@@ -846,6 +858,10 @@ bool krul_object_get_u32(const krul_object_t* object, const char* name,
  */
 bool krul_object_get_bool(const krul_object_t* object, const char* name,
                           bool* value);
+
+/** Read a validated numeric enum field from a nested object. */
+bool krul_object_get_enum(const krul_object_t* object, const char* name,
+                          int32_t* value);
 
 /**
  * @brief Скопировать строковое поле вложенного объекта.
@@ -903,8 +919,12 @@ bool krul_result_put_f32(krul_result_t* result, const char* name, float value);
  */
 bool krul_result_put_bool(krul_result_t* result, const char* name, bool value);
 
+/** Write a numeric enum code declared by the result descriptor. */
+bool krul_result_put_enum(krul_result_t* result, const char* name,
+                          int32_t value);
+
 /**
- * @brief Записать значение результата STRING, ENUM или CONSOLE_STRING.
+ * @brief Записать значение результата STRING или CONSOLE_STRING.
  * @param result Запись результата для обработчика/функции завершения.
  * @param name Объявленное имя поля или NULL для элемента массива.
  * @param value Значение с завершающим нулём, сразу копируемое сериализатором.
@@ -996,14 +1016,14 @@ bool krul_result_ok(const krul_result_t* result);
      .default_value.string = (_default),                                 \
      .constraints.string = {.min_length = (_min), .max_length = (_max)}}
 
-/** Необязательное строковое перечисление со значениями из compile-time массива. */
+/** Необязательное числовое перечисление со значениями из compile-time массива. */
 #define KRUL_ENUM_DEFAULT(_name, _label, _values, _default)             \
     {.name = (_name),                                                     \
      .label = (_label),                                                   \
      .type = KRUL_TYPE_ENUM,                                             \
      .has_default = true,                                                \
      .has_constraints = true,                                            \
-     .default_value.string = (_default),                                 \
+     .default_value.i32 = (_default),                                    \
      .constraints.enumeration = {                                        \
          .values = (_values),                                            \
          .count = (uint16_t)KRUL_ARRAY_SIZE(_values)}}

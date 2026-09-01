@@ -343,11 +343,10 @@ def test_heartbeat_disconnects_after_three_consecutive_misses(qtbot) -> None:
 
     window._heartbeat_tick()
     first = worker.requests[-1]
-    assert first["cmd"] == "WHOAMI"
+    assert first["cmd"] == "PING"
     window._receive_line(json.dumps({
         "id": first["id"],
         "success": True,
-        "result": {"protocol_version": gui.PROTOCOL_VERSION},
     }))
     assert window._heartbeat_misses == 0
 
@@ -377,8 +376,8 @@ def test_spinbox_has_no_arrows_and_combobox_has_visible_arrow() -> None:
 
 def test_enum_parameter_and_result_use_descriptor_values(qtbot) -> None:
     values = [
-        {"value": "idle", "title": "Ожидание"},
-        {"value": "run", "title": "Работа"},
+        {"value": 0, "title": "Ожидание"},
+        {"value": 1, "title": "Работа"},
     ]
     form = gui.CommandForm(
         {
@@ -386,7 +385,7 @@ def test_enum_parameter_and_result_use_descriptor_values(qtbot) -> None:
             "params": [{
                 "name": "requested",
                 "type": "enum",
-                "default": "idle",
+                "default": 0,
                 "constraints": {"values": values},
             }],
             "result": [{
@@ -402,17 +401,17 @@ def test_enum_parameter_and_result_use_descriptor_values(qtbot) -> None:
     selector = form.param_widgets["requested"]
     assert isinstance(selector, gui.QComboBox)
     assert selector.currentText() == "Ожидание"
-    selector.setCurrentIndex(selector.findData("run"))
-    assert form.parameters() == {"requested": "run"}
+    selector.setCurrentIndex(selector.findData(1))
+    assert form.parameters() == {"requested": 1}
 
     output = form.result_widgets["active"]
     assert isinstance(output, gui.ResultEnumLabel)
-    form.handle_response({"success": True, "result": {"active": "run"}})
+    form.handle_response({"success": True, "result": {"active": 1}})
     assert output.text() == "Работа"
-    assert output.toolTip() == "Значение протокола: run"
+    assert output.toolTip() == "Значение протокола: 1"
 
-    form.handle_response({"success": True, "result": {"active": "future"}})
-    assert output.text() == "future"
+    form.handle_response({"success": True, "result": {"active": 99}})
+    assert output.text() == "99"
 
 
 def test_message_boxes_follow_the_dark_theme() -> None:

@@ -1,7 +1,7 @@
 # Диспетчер команд Krul
 
 Сгенерированная документация API начинается с `Libs/docs/mainpage.md`;
-нормативный JSON-контракт версии 3 находится в `Libs/docs/json_protocol_v3.md`;
+нормативный контракт версии 4 находится в `Libs/docs/json_protocol_v4.md`;
 краткая настройка приведена в `Libs/docs/getting_started.md`, а полный путь
 запроса описан в `Libs/docs/request_lifecycle.md`. Для сборки HTML-страниц
 выполните `doxygen Doxyfile` из корня репозитория.

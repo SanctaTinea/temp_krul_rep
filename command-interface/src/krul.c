@@ -115,8 +115,10 @@ size_t krul_encode_event(krul_server_t* server, const char* event,
             case KRUL_TYPE_BOOL:
                 serde_put_bool(writer, &key, fields[index].value.boolean);
                 break;
-            case KRUL_TYPE_STRING:
             case KRUL_TYPE_ENUM:
+                serde_put_i32(writer, &key, fields[index].value.i32);
+                break;
+            case KRUL_TYPE_STRING:
             case KRUL_TYPE_CONSOLE_STRING:
                 if (fields[index].value.string == NULL) return 0U;
                 serde_put_string(writer, &key, fields[index].value.string);

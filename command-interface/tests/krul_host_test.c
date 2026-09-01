@@ -131,6 +131,8 @@ static const krul_field_desc_t array_result[] = {
 
 static const krul_command_t whoami = {
     .name = "WHOAMI", .type = KRUL_CMD_BUILTIN};
+static const krul_command_t ping = {
+    .name = "PING", .type = KRUL_CMD_BUILTIN};
 static const krul_command_t command_list = {
     .name = "CMD_LIST", .type = KRUL_CMD_BUILTIN};
 static const krul_command_t describe = {
@@ -179,7 +181,7 @@ static const krul_command_t deferred = {
     .timeout_ms = 12000U,
     .handler = deferred_handler};
 static const krul_command_t* const commands[] = {
-    &whoami, &command_list, &describe, &echo, &hidden,
+    &ping, &whoami, &command_list, &describe, &echo, &hidden,
     &array,  &bad_missing,  &bad_type, &deferred};
 
 static krul_server_t server;
@@ -208,7 +210,7 @@ int main(void) {
         .device_name = "TEST",
         .device_id = "TEST-DEVICE-01",
         .firmware_version = "2.0.0",
-        .protocol_version = 3,
+        .protocol_version = 4,
         .codec = serde_json(&json),
         .response_buffer = response,
         .response_capacity = sizeof(response),
@@ -233,7 +235,9 @@ int main(void) {
     expect_contains("{\"cmd\":\"WHOAMI\",\"id\":10}",
                     "\"device_id\":\"TEST-DEVICE-01\"");
     expect_contains("{\"cmd\":\"WHOAMI\",\"id\":11}",
-                    "\"protocol_version\":3");
+                    "\"protocol_version\":4");
+    expect_contains("{\"cmd\":\"PING\",\"id\":12}",
+                    "{\"id\":12,\"success\":true}");
     expect_contains("{\"cmd\":\"CMD_LIST\",\"id\":2}", "\"ECHO\"");
     expect_contains("{\"cmd\":\"CMD_LIST\",\"id\":21}", "\"HIDDEN\"");
     expect_contains(

@@ -2,7 +2,7 @@
 
 Besides `KRJ1` JSON and `KRB1` BSON, this library accepts `KRC1` compact CBOR.
 Transport treats the payload as opaque bytes; the numeric-key CBOR mapping is
-documented in `../docs/cbor_protocol_v3.md`.
+documented in `../docs/cbor_protocol_v4.md`.
 
 Независимая от Krul command-interface библиотека потокового framing для JSON
 и BSON/CBOR payload. Она отвечает только за `magic`, длину, CRC и восстановление

@@ -30,8 +30,9 @@ static bool read_argument(const uint8_t* data, size_t size, size_t offset,
         return true;
     }
     size_t count = additional == 24U ? 1U : additional == 25U ? 2U
-                                      : additional == 26U ? 4U
-                                      : additional == 27U ? 8U : 0U;
+                                        : additional == 26U   ? 4U
+                                        : additional == 27U   ? 8U
+                                                              : 0U;
     if (count == 0U || count > size - offset - 1U) return false;
     uint64_t result = 0U;
     for (size_t index = 0U; index < count; ++index)
@@ -119,17 +120,22 @@ static serde_kind_t cbor_kind(const void* self, serde_node_t node) {
     uint8_t initial = cbor->input[offset];
     switch (initial >> 5U) {
         case 0U:
-        case 1U: return SERDE_KIND_NUMBER;
-        case 3U: return SERDE_KIND_STRING;
-        case 4U: return SERDE_KIND_ARRAY;
-        case 5U: return SERDE_KIND_OBJECT;
+        case 1U:
+            return SERDE_KIND_NUMBER;
+        case 3U:
+            return SERDE_KIND_STRING;
+        case 4U:
+            return SERDE_KIND_ARRAY;
+        case 5U:
+            return SERDE_KIND_OBJECT;
         case 7U:
             if (initial == 0xF4U || initial == 0xF5U) return SERDE_KIND_BOOL;
             if (initial == 0xF6U) return SERDE_KIND_NULL;
             if (initial == 0xF9U || initial == 0xFAU || initial == 0xFBU)
                 return SERDE_KIND_NUMBER;
             return SERDE_KIND_INVALID;
-        default: return SERDE_KIND_INVALID;
+        default:
+            return SERDE_KIND_INVALID;
     }
 }
 
@@ -204,17 +210,21 @@ static bool cbor_object_member(const void* self, serde_node_t object,
         return false;
     *key = (serde_key_view_t){0};
     uint8_t initial = cbor->input[cursor];
+    // | Major type | Значение   |
+    // | 0 | беззнаковое целое   |
+    // | 1 | отрицательное целое |
+    // | 3 | текстовая строка    |
+    // | 4 | array               |
+    // | 5 | map                 |
     uint8_t major = initial >> 5U;
     uint64_t argument = 0U;
     size_t header = 0U;
-    if (!read_argument(cbor->input, cbor->input_size, cursor, initial & 31U,
-                       &argument, &header))
+    if (!read_argument(cbor->input, cbor->input_size, cursor, initial & 31U, &argument, &header))
         return false;
     if (major == 0U && argument <= UINT16_MAX && argument != 0U) {
         key->tag = (uint16_t)argument;
         key->has_tag = true;
-    } else if (major == 3U && argument <= SIZE_MAX &&
-               (size_t)argument <= cbor->input_size - cursor - header) {
+    } else if (major == 3U && argument <= SIZE_MAX && (size_t)argument <= cbor->input_size - cursor - header) {
         key->name = (const char*)cbor->input + cursor + header;
         key->name_length = (size_t)argument;
         key->has_name = true;
@@ -228,8 +238,7 @@ static bool cbor_object_member(const void* self, serde_node_t object,
     return true;
 }
 
-static bool cbor_array_get(const void* self, serde_node_t array, size_t index,
-                           serde_node_t* value) {
+static bool cbor_array_get(const void* self, serde_node_t array, size_t index, serde_node_t* value) {
     const serde_cbor_codec_t* cbor = self;
     size_t cursor = 0U;
     uint64_t count = 0U;
@@ -255,7 +264,7 @@ static bool integer_value(const serde_cbor_codec_t* cbor, serde_node_t node,
     uint8_t major = initial >> 5U;
     size_t header = 0U;
     if (major > 1U || !read_argument(cbor->input, cbor->input_size, offset,
-                                    initial & 31U, magnitude, &header))
+                                     initial & 31U, magnitude, &header))
         return false;
     *negative = major == 1U;
     return true;
@@ -293,7 +302,8 @@ static float half_to_float(uint16_t half) {
     uint32_t fraction = half & 0x03FFU;
     uint32_t bits;
     if (exponent == 0U) {
-        if (fraction == 0U) bits = sign;
+        if (fraction == 0U)
+            bits = sign;
         else {
             exponent = 113U;
             while ((fraction & 0x0400U) == 0U) {
@@ -370,7 +380,8 @@ static bool cbor_get_string(const void* self, serde_node_t node, char* output,
     size_t header = 0U;
     if ((initial >> 5U) != 3U || (initial & 31U) == 31U ||
         !read_argument(cbor->input, cbor->input_size, offset, initial & 31U,
-                       &count, &header) || count > SIZE_MAX ||
+                       &count, &header) ||
+        count > SIZE_MAX ||
         (size_t)count > cbor->input_size - offset - header)
         return false;
     if (length != NULL) *length = (size_t)count;
@@ -394,9 +405,11 @@ static bool append_uint(cbor_writer_impl_t* writer, uint8_t major,
                         uint64_t value) {
     if (value < 24U) return append_byte(writer, (uint8_t)(major | value));
     size_t count = value <= UINT8_MAX ? 1U : value <= UINT16_MAX ? 2U
-                                      : value <= UINT32_MAX ? 4U : 8U;
+                                         : value <= UINT32_MAX   ? 4U
+                                                                 : 8U;
     uint8_t additional = count == 1U ? 24U : count == 2U ? 25U
-                                      : count == 4U ? 26U : 27U;
+                                         : count == 4U   ? 26U
+                                                         : 27U;
     if (!append_byte(writer, major | additional)) return false;
     for (size_t index = count; index > 0U; --index)
         if (!append_byte(writer, (uint8_t)(value >> ((index - 1U) * 8U))))

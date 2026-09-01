@@ -10,8 +10,6 @@
 
 #include <string.h>
 
-#define KRUL_MAX_ENUM_VALUE 128U
-
 static bool key_matches_field(const serde_key_view_t* view,
                               const krul_field_desc_t* field) {
     if (view->has_tag && view->tag == krul_field_tag(field))
@@ -34,20 +32,19 @@ static const krul_field_desc_t* find_field_view(
     return NULL;
 }
 
-static bool validate_enum_string(serde_codec_t codec, serde_node_t node,
-                                 const krul_field_desc_t* field,
-                                 krul_error_t* error) {
-    char value[KRUL_MAX_ENUM_VALUE];
-    if (!serde_get_string(codec, node, value, sizeof(value), NULL)) {
+static bool validate_enum_value(serde_codec_t codec, serde_node_t node,
+                                const krul_field_desc_t* field,
+                                krul_error_t* error) {
+    int32_t value = 0;
+    if (!serde_get_i32(codec, node, &value)) {
         krul_error_set(error, KRUL_ERROR_INVALID_TYPE,
-                       "Field '%s' must be an enum string",
+                       "Field '%s' must be an enum integer",
                        krul_field_name(field));
         return false;
     }
     for (uint16_t index = 0U; index < field->constraints.enumeration.count;
          ++index) {
-        if (strcmp(value, field->constraints.enumeration.values[index].value) ==
-            0)
+        if (value == field->constraints.enumeration.values[index].value)
             return true;
     }
     krul_error_set(error, KRUL_ERROR_OUT_OF_RANGE,
@@ -149,12 +146,23 @@ bool krul_user_validator_get_bool(const krul_value_ref_t* value, bool* output) {
     return value->present && serde_get_bool(value->codec, value->node, output);
 }
 
+bool krul_user_validator_get_enum(const krul_value_ref_t* value,
+                                  int32_t* output) {
+    if (value == NULL || output == NULL || value->desc == NULL ||
+        value->desc->type != KRUL_TYPE_ENUM)
+        return false;
+    if (value->direct) {
+        *output = value->value.i32;
+        return true;
+    }
+    return value->present && serde_get_i32(value->codec, value->node, output);
+}
+
 bool krul_user_validator_get_string(const krul_value_ref_t* value, char* output,
                            size_t capacity) {
     if (value == NULL || output == NULL || capacity == 0U ||
         value->desc == NULL ||
         (value->desc->type != KRUL_TYPE_STRING &&
-         value->desc->type != KRUL_TYPE_ENUM &&
          value->desc->type != KRUL_TYPE_CONSOLE_STRING))
         return false;
     if (value->direct) {
@@ -264,13 +272,28 @@ bool krul_args_get_bool(const krul_args_t* args, const char* name, bool* value) 
     return serde_get_bool(args->codec, node, value);
 }
 
+bool krul_args_get_enum(const krul_args_t* args, const char* name,
+                        int32_t* value) {
+    serde_node_t node = {0};
+    bool present = false;
+    const krul_field_desc_t* field = args_field(args, name, &node, &present);
+    if (field == NULL || field->type != KRUL_TYPE_ENUM || value == NULL)
+        return false;
+    if (!present) {
+        if (!field->has_default) return false;
+        *value = field->default_value.i32;
+        return true;
+    }
+    return serde_get_i32(args->codec, node, value);
+}
+
 bool krul_args_get_string(const krul_args_t* args, const char* name, char* output,
                       size_t capacity) {
     serde_node_t node = {0};
     bool present = false;
     const krul_field_desc_t* field = args_field(args, name, &node, &present);
     if (field == NULL ||
-        (field->type != KRUL_TYPE_STRING && field->type != KRUL_TYPE_ENUM &&
+        (field->type != KRUL_TYPE_STRING &&
          field->type != KRUL_TYPE_CONSOLE_STRING) ||
         output == NULL || capacity == 0U)
         return false;
@@ -312,12 +335,21 @@ size_t krul_array_get_size(const krul_array_t* array) {
 bool krul_array_get_string(const krul_array_t* array, size_t index, char* output,
                        size_t capacity) {
     if (array == NULL || !array->present || array->element_desc == NULL ||
-        (array->element_desc->type != KRUL_TYPE_STRING &&
-         array->element_desc->type != KRUL_TYPE_ENUM))
+        array->element_desc->type != KRUL_TYPE_STRING)
         return false;
     serde_node_t node = {0};
     return serde_array_get(array->codec, array->node, index, &node) &&
            serde_get_string(array->codec, node, output, capacity, NULL);
+}
+
+bool krul_array_get_enum(const krul_array_t* array, size_t index,
+                         int32_t* value) {
+    if (array == NULL || !array->present || array->element_desc == NULL ||
+        array->element_desc->type != KRUL_TYPE_ENUM || value == NULL)
+        return false;
+    serde_node_t node = {0};
+    return serde_array_get(array->codec, array->node, index, &node) &&
+           serde_get_i32(array->codec, node, value);
 }
 
 bool krul_array_get_object(const krul_array_t* array, size_t index,
@@ -374,12 +406,20 @@ bool krul_object_get_bool(const krul_object_t* object, const char* name,
            serde_get_bool(object->codec, node, value);
 }
 
+bool krul_object_get_enum(const krul_object_t* object, const char* name,
+                          int32_t* value) {
+    serde_node_t node = {0};
+    const krul_field_desc_t* field = object_field(object, name, &node);
+    return field != NULL && field->type == KRUL_TYPE_ENUM && value != NULL &&
+           serde_get_i32(object->codec, node, value);
+}
+
 bool krul_object_get_string(const krul_object_t* object, const char* name,
                         char* output, size_t capacity) {
     serde_node_t node = {0};
     const krul_field_desc_t* field = object_field(object, name, &node);
     return field != NULL &&
-           (field->type == KRUL_TYPE_STRING || field->type == KRUL_TYPE_ENUM) &&
+           field->type == KRUL_TYPE_STRING &&
            serde_get_string(object->codec, node, output, capacity, NULL);
 }
 
@@ -479,7 +519,7 @@ static bool validate_input_value(serde_codec_t codec, serde_node_t node,
             }
             break;
         case KRUL_TYPE_ENUM:
-            if (!validate_enum_string(codec, node, field, error)) return false;
+            if (!validate_enum_value(codec, node, field, error)) return false;
             break;
         case KRUL_TYPE_ARRAY: {
             if (serde_kind(codec, node) != SERDE_KIND_ARRAY) {

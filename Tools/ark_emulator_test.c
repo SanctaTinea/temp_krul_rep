@@ -51,6 +51,11 @@ int main(void) {
         emulator, "{\"cmd\":\"WHOAMI\",\"id\":1}",
         "\"device_name\":\"АРК\"");
     failed |= dispatch_contains(
+        emulator, "{\"cmd\":\"PING\",\"id\":15}",
+        "{\"id\":15,\"success\":true}");
+    failed |= dispatch_lacks(
+        emulator, "{\"cmd\":\"PING\",\"id\":16}", "\"result\"");
+    failed |= dispatch_contains(
         emulator, "{\"cmd\":\"CMD_LIST\",\"id\":2}",
         "\"TEMPERATURE_READ\"");
     failed |= dispatch_lacks(
@@ -65,11 +70,11 @@ int main(void) {
         "\"widget_hint\":\"special_adc_group\"");
     failed |= dispatch_contains(
         emulator,
-        "{\"cmd\":\"DAC_SET\",\"params\":{\"channel\":\"DACREF_MCU\",\"value\":1234},\"id\":4}",
+        "{\"cmd\":\"DAC_SET\",\"params\":{\"channel\":0,\"value\":1234},\"id\":4}",
         "\"result\":{}");
     failed |= dispatch_contains(
         emulator,
-        "{\"cmd\":\"DAC_READ\",\"params\":{\"channel\":\"DACREF_MCU\"},\"id\":5}",
+        "{\"cmd\":\"DAC_READ\",\"params\":{\"channel\":0},\"id\":5}",
         "\"value\":1234");
     failed |= dispatch_contains(
         emulator,
@@ -81,11 +86,11 @@ int main(void) {
         "\"nogui\":true");
     failed |= dispatch_contains(
         emulator,
-        "{\"cmd\":\"PWM_SET\",\"params\":{\"channel\":\"ARK_PWM1_1\",\"duty_cycle\":25,\"period_counter\":400},\"id\":9}",
+        "{\"cmd\":\"PWM_SET\",\"params\":{\"channel\":0,\"duty_cycle\":25,\"period_counter\":400},\"id\":9}",
         "\"result\":{}");
     failed |= dispatch_contains(
         emulator,
-        "{\"cmd\":\"CAN_SEND\",\"params\":{\"channel\":\"FDCAN2\",\"id\":256,\"data\":\"ARK\"},\"id\":10}",
+        "{\"cmd\":\"CAN_SEND\",\"params\":{\"channel\":1,\"id\":256,\"data\":\"ARK\"},\"id\":10}",
         "\"queued\":true");
     failed |= dispatch_lacks(
         emulator,
@@ -93,11 +98,11 @@ int main(void) {
         "\"autoupdate\"");
     failed |= dispatch_contains(
         emulator,
-        "{\"cmd\":\"MEM_WRITE\",\"params\":{\"memory\":\"FRAM\",\"address\":16,\"data\":\"ARK\"},\"id\":6}",
+        "{\"cmd\":\"MEM_WRITE\",\"params\":{\"memory\":1,\"address\":16,\"data\":\"ARK\"},\"id\":6}",
         "\"bytes\":3");
     failed |= dispatch_contains(
         emulator,
-        "{\"cmd\":\"MEM_READ\",\"params\":{\"memory\":\"FRAM\",\"address\":16,\"size\":3},\"id\":7}",
+        "{\"cmd\":\"MEM_READ\",\"params\":{\"memory\":1,\"address\":16,\"size\":3},\"id\":7}",
         "\"data\":\"41524b\"");
     ark_emulator_server_destroy(emulator);
     return failed == 0 ? 0 : 1;

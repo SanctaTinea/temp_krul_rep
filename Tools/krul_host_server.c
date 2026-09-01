@@ -1,4 +1,4 @@
-/* Native Krul v3 test server using the production serde and dispatcher. */
+/* Native Krul v4 test server using the production serde and dispatcher. */
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -47,34 +47,27 @@ static mock_pin_t mock_pins[] = {
 };
 
 static const krul_enum_value_t all_pin_values[] = {
-    {.value = "BUTTON", .title = "BUTTON"},
-    {.value = "FAULT", .title = "FAULT"},
-    {.value = "LED_GREEN", .title = "LED_GREEN"},
-    {.value = "RELAY", .title = "RELAY"},
+    {.value = 0, .title = "BUTTON"},
+    {.value = 1, .title = "FAULT"},
+    {.value = 2, .title = "LED_GREEN"},
+    {.value = 3, .title = "RELAY"},
 };
 static const krul_enum_value_t output_pin_values[] = {
-    {.value = "LED_GREEN", .title = "LED_GREEN"},
-    {.value = "RELAY", .title = "RELAY"},
+    {.value = 0, .title = "LED_GREEN"},
+    {.value = 1, .title = "RELAY"},
 };
 static const krul_enum_value_t pin_type_values[] = {
-    {.value = "IN", .title = "IN"},
-    {.value = "OUT", .title = "OUT"},
+    {.value = 0, .title = "IN"},
+    {.value = 1, .title = "OUT"},
 };
 
-static mock_pin_t* find_pin(const char* name, bool outputs_only) {
-    for (size_t index = 0U; index < KRUL_ARRAY_SIZE(mock_pins); ++index) {
-        if (strcmp(mock_pins[index].name, name) == 0 &&
-            (!outputs_only || strcmp(mock_pins[index].type, "OUT") == 0))
-            return &mock_pins[index];
-    }
-    return NULL;
-}
-
 static bool write_pin(krul_result_t* result, const mock_pin_t* pin,
-                      bool include_type) {
+                      int32_t name_code, bool include_type) {
     return krul_result_begin_object(result, NULL) &&
-           krul_result_put_string(result, "name", pin->name) &&
-           (!include_type || krul_result_put_string(result, "type", pin->type)) &&
+           krul_result_put_enum(result, "name", name_code) &&
+           (!include_type || krul_result_put_enum(
+                                result, "type",
+                                strcmp(pin->type, "OUT") == 0 ? 1 : 0)) &&
            krul_result_put_i32(result, "state", pin->state) &&
            krul_result_end_object(result);
 }
@@ -87,19 +80,22 @@ static bool pin_get_handler(const krul_args_t* args, krul_result_t* result,
     if (!krul_result_begin_array(result, "pins")) return false;
     if (count == 0U) {
         for (size_t index = 0U; index < KRUL_ARRAY_SIZE(mock_pins); ++index)
-            if (!write_pin(result, &mock_pins[index], true)) return false;
+            if (!write_pin(result, &mock_pins[index], (int32_t)index, true))
+                return false;
     } else {
         for (size_t index = 0U; index < count; ++index) {
-            char name[32];
-            if (!krul_array_get_string(&requested, index, name, sizeof(name)))
+            int32_t code = 0;
+            if (!krul_array_get_enum(&requested, index, &code))
                 return false;
-            mock_pin_t* pin = find_pin(name, false);
+            mock_pin_t* pin = code >= 0 &&
+                                      (size_t)code < KRUL_ARRAY_SIZE(mock_pins)
+                                  ? &mock_pins[code] : NULL;
             if (pin == NULL) {
                 krul_error_set(error, KRUL_ERROR_EXECUTION,
-                               "Mock pin '%s' is unavailable", name);
+                               "Mock pin code %ld is unavailable", (long)code);
                 return false;
             }
-            if (!write_pin(result, pin, true)) return false;
+            if (!write_pin(result, pin, code, true)) return false;
         }
     }
     return krul_result_end_array(result) && krul_result_ok(result);
@@ -114,22 +110,26 @@ static bool pin_set_handler(const krul_args_t* args, krul_result_t* result,
     int32_t states[KRUL_ARRAY_SIZE(output_pin_values)];
     for (size_t index = 0U; index < count; ++index) {
         krul_object_t update;
-        char name[32];
+        int32_t code = 0;
         if (!krul_array_get_object(&requested, index, &update) ||
-            !krul_object_get_string(&update, "name", name, sizeof(name)) ||
+            !krul_object_get_enum(&update, "name", &code) ||
             !krul_object_get_i32(&update, "state", &states[index]))
             return false;
-        pins[index] = find_pin(name, true);
+        pins[index] = code >= 0 &&
+                              (size_t)code < KRUL_ARRAY_SIZE(output_pin_values)
+                          ? &mock_pins[code + 2] : NULL;
         if (pins[index] == NULL) {
             krul_error_set(error, KRUL_ERROR_EXECUTION,
-                           "Mock output '%s' is unavailable", name);
+                           "Mock output code %ld is unavailable", (long)code);
             return false;
         }
     }
     if (!krul_result_begin_array(result, "pins")) return false;
     for (size_t index = 0U; index < count; ++index) {
         pins[index]->state = states[index];
-        if (!write_pin(result, pins[index], false)) return false;
+        if (!write_pin(result, pins[index],
+                       (int32_t)(pins[index] - &mock_pins[2]), false))
+            return false;
     }
     return krul_result_end_array(result) && krul_result_ok(result);
 }
@@ -320,6 +320,8 @@ static const krul_field_desc_t adc_result[] = {
 
 static const krul_command_t whoami = {
     .name = "WHOAMI", .type = KRUL_CMD_BUILTIN};
+static const krul_command_t ping = {
+    .name = "PING", .type = KRUL_CMD_BUILTIN};
 static const krul_command_t command_list = {
     .name = "CMD_LIST", .type = KRUL_CMD_BUILTIN};
 static const krul_command_t describe = {
@@ -370,7 +372,8 @@ static const krul_command_t adc_read = {
     .default_period_ms = 500U,
     .handler = adc_read_handler};
 static const krul_command_t* const commands[] = {
-    &whoami, &command_list, &describe, &pin_get, &pin_set, &echo, &adc_read};
+    &ping, &whoami, &command_list, &describe, &pin_get, &pin_set, &echo,
+    &adc_read};
 
 static krul_server_t json_server;
 static krul_server_t bson_server;
@@ -559,7 +562,7 @@ int main(int argc, char** argv) {
         .command_count = KRUL_ARRAY_SIZE(commands),
         .device_name = "ARK-PC-NATIVE",
         .firmware_version = "host-1.0.0",
-        .protocol_version = 3U,
+        .protocol_version = 4U,
         .codec = serde_json(&json),
         .response_buffer = json_server_response,
         .response_capacity = sizeof(json_server_response)};

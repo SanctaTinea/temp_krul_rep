@@ -69,31 +69,44 @@
     X(BKU1_CUR, 2500) X(BKU2_CUR, 2750) X(BAT_CUR, 3000)
 
 #define STRING_ITEM(name) #name,
-#define ENUM_ITEM(name) {#name, #name},
+#define ENUM_ITEM(name) {__COUNTER__ - enum_counter_base - 1, #name},
 #define ADC_FIELD(name, base) KRUL_RESULT_I32("value_" #name, #name),
 
 static const char* const output_pin_names[] = {OUTPUT_PIN_LIST(STRING_ITEM)};
 static const char* const input_pin_names[] = {INPUT_PIN_LIST(STRING_ITEM)};
 static const char* const pwm_channel_names[] = {PWM_CHANNEL_LIST(STRING_ITEM)};
 
+enum { enum_counter_base = __COUNTER__ };
 static const krul_enum_value_t all_pin_values[] = {
     INPUT_PIN_LIST(ENUM_ITEM) OUTPUT_PIN_LIST(ENUM_ITEM)};
+#undef enum_counter_base
+#define enum_counter_base output_enum_counter_base
+enum { output_enum_counter_base = __COUNTER__ };
 static const krul_enum_value_t output_pin_values[] = {
     OUTPUT_PIN_LIST(ENUM_ITEM)};
+#undef enum_counter_base
+#define enum_counter_base set_enum_counter_base
+#define SET_ENUM_ITEM(name) {__COUNTER__ - enum_counter_base, #name},
+enum { set_enum_counter_base = __COUNTER__ };
 static const krul_enum_value_t pin_set_name_values[] = {
-    {"ALL", "All outputs"}, OUTPUT_PIN_LIST(ENUM_ITEM)};
+    {0, "All outputs"}, OUTPUT_PIN_LIST(SET_ENUM_ITEM)};
+#undef SET_ENUM_ITEM
+#undef enum_counter_base
 static const krul_enum_value_t pin_type_values[] = {
-    {"IN", "Input"}, {"OUT", "Output"}};
+    {0, "Input"}, {1, "Output"}};
 static const krul_enum_value_t dac_values[] = {
-    {"DACREF_MCU", "DACREF_MCU"}};
+    {0, "DACREF_MCU"}};
+#define enum_counter_base pwm_enum_counter_base
+enum { pwm_enum_counter_base = __COUNTER__ };
 static const krul_enum_value_t pwm_values[] = {PWM_CHANNEL_LIST(ENUM_ITEM)};
+#undef enum_counter_base
 static const krul_enum_value_t fdcan_values[] = {
-    {"FDCAN1", "FDCAN 1"}, {"FDCAN2", "FDCAN 2"}};
-static const krul_enum_value_t uart_values[] = {{"UART4", "UART 4 (TX)"}};
+    {0, "FDCAN 1"}, {1, "FDCAN 2"}};
+static const krul_enum_value_t uart_values[] = {{0, "UART 4 (TX)"}};
 static const krul_enum_value_t memory_values[] = {
-    {"MCU", "Память STM32"},
-    {"FRAM", "Внешняя FRAM"},
-    {"MRAM", "Внешняя MRAM"}};
+    {0, "Память STM32"},
+    {1, "Внешняя FRAM"},
+    {2, "Внешняя MRAM"}};
 
 typedef struct {
     uint32_t base;
@@ -128,17 +141,11 @@ struct ark_emulator_server {
 
 static ark_emulator_server_t* active_emulator;
 
-static int find_name(const char* name, const char* const* names, size_t count) {
-    for (size_t index = 0U; index < count; ++index)
-        if (strcmp(name, names[index]) == 0) return (int)index;
-    return -1;
-}
-
-static bool put_pin(krul_result_t* result, const char* name, const char* type,
+static bool put_pin(krul_result_t* result, int32_t name, int32_t type,
                     bool state, bool include_type) {
     return krul_result_begin_object(result, NULL) &&
-           krul_result_put_string(result, "name", name) &&
-           (!include_type || krul_result_put_string(result, "type", type)) &&
+           krul_result_put_enum(result, "name", name) &&
+           (!include_type || krul_result_put_enum(result, "type", type)) &&
            krul_result_put_i32(result, "state", state ? 1 : 0) &&
            krul_result_end_object(result);
 }
@@ -153,27 +160,26 @@ static bool pin_get_handler(const krul_args_t* args, krul_result_t* result,
     size_t count = krul_array_get_size(&pins);
     if (count == 0U) {
         for (size_t i = 0U; i < ARRAY_SIZE(input_pin_names); ++i)
-            if (!put_pin(result, input_pin_names[i], "IN",
+            if (!put_pin(result, (int32_t)i, 0,
                          active_emulator->input_states[i], true))
                 return false;
         for (size_t i = 0U; i < ARRAY_SIZE(output_pin_names); ++i)
-            if (!put_pin(result, output_pin_names[i], "OUT",
+            if (!put_pin(result, (int32_t)(ARRAY_SIZE(input_pin_names) + i), 1,
                          active_emulator->output_states[i], true))
                 return false;
     } else {
         for (size_t i = 0U; i < count; ++i) {
-            char name[40];
-            if (!krul_array_get_string(&pins, i, name, sizeof(name))) return false;
-            int index = find_name(name, input_pin_names, ARRAY_SIZE(input_pin_names));
-            if (index >= 0) {
-                if (!put_pin(result, input_pin_names[index], "IN",
-                             active_emulator->input_states[index], true))
+            int32_t code = 0;
+            if (!krul_array_get_enum(&pins, i, &code)) return false;
+            if (code >= 0 && (size_t)code < ARRAY_SIZE(input_pin_names)) {
+                if (!put_pin(result, code, 0,
+                             active_emulator->input_states[code], true))
                     return false;
                 continue;
             }
-            index = find_name(name, output_pin_names, ARRAY_SIZE(output_pin_names));
-            if (index < 0 ||
-                !put_pin(result, output_pin_names[index], "OUT",
+            int index = (int)(code - (int32_t)ARRAY_SIZE(input_pin_names));
+            if (index < 0 || (size_t)index >= ARRAY_SIZE(output_pin_names) ||
+                !put_pin(result, code, 1,
                          active_emulator->output_states[index], true))
                 return false;
         }
@@ -191,19 +197,20 @@ static bool pin_set_handler(const krul_args_t* args, krul_result_t* result,
     bool set_all = false;
     for (size_t i = 0U; i < count; ++i) {
         krul_object_t pin;
-        char name[40];
+        int32_t code = 0;
         if (!krul_array_get_object(&pins, i, &pin) ||
-            !krul_object_get_string(&pin, "name", name, sizeof(name)) ||
+            !krul_object_get_enum(&pin, "name", &code) ||
             !krul_object_get_i32(&pin, "state", &states[i]))
             return false;
-        if (count == 1U && strcmp(name, "ALL") == 0) {
+        if (count == 1U && code == 0) {
             set_all = true;
             continue;
         }
-        indexes[i] = find_name(name, output_pin_names, ARRAY_SIZE(output_pin_names));
+        indexes[i] = (int)code - 1;
         if (indexes[i] < 0) {
             krul_error_set(error, KRUL_ERROR_EXECUTION,
-                           "Validated output pin '%s' is unavailable", name);
+                           "Validated output pin code %ld is unavailable",
+                           (long)code);
             return false;
         }
     }
@@ -217,12 +224,12 @@ static bool pin_set_handler(const krul_args_t* args, krul_result_t* result,
     if (!krul_result_begin_array(result, "pins")) return false;
     if (set_all) {
         for (size_t i = 0U; i < ARRAY_SIZE(output_pin_names); ++i)
-            if (!put_pin(result, output_pin_names[i], "OUT",
+            if (!put_pin(result, (int32_t)i, 1,
                          active_emulator->output_states[i], false))
                 return false;
     } else {
         for (size_t i = 0U; i < count; ++i)
-            if (!put_pin(result, output_pin_names[indexes[i]], "OUT",
+            if (!put_pin(result, indexes[i], 1,
                          active_emulator->output_states[indexes[i]], false))
                 return false;
     }
@@ -249,10 +256,10 @@ static bool adc_read_handler(const krul_args_t* args, krul_result_t* result,
 
 static bool dac_set_handler(const krul_args_t* args, krul_result_t* result,
                             krul_error_t* error) {
-    char channel[32];
+    int32_t channel = 0;
     int32_t value;
     (void)error;
-    if (!krul_args_get_string(args, "channel", channel, sizeof(channel)) ||
+    if (!krul_args_get_enum(args, "channel", &channel) ||
         !krul_args_get_i32(args, "value", &value))
         return false;
     active_emulator->dac_value = (uint32_t)value;
@@ -261,24 +268,25 @@ static bool dac_set_handler(const krul_args_t* args, krul_result_t* result,
 
 static bool dac_read_handler(const krul_args_t* args, krul_result_t* result,
                              krul_error_t* error) {
-    char channel[32];
+    int32_t channel = 0;
     (void)error;
-    return krul_args_get_string(args, "channel", channel, sizeof(channel)) &&
+    return krul_args_get_enum(args, "channel", &channel) &&
            krul_result_put_u32(result, "value", active_emulator->dac_value) &&
            krul_result_ok(result);
 }
 
-static int get_pwm(const krul_args_t* args, char* channel, size_t capacity) {
-    if (!krul_args_get_string(args, "channel", channel, capacity)) return -1;
-    return find_name(channel, pwm_channel_names, ARRAY_SIZE(pwm_channel_names));
+static int get_pwm(const krul_args_t* args) {
+    int32_t channel = 0;
+    if (!krul_args_get_enum(args, "channel", &channel)) return -1;
+    return channel >= 0 && (size_t)channel < ARRAY_SIZE(pwm_channel_names)
+               ? (int)channel : -1;
 }
 
 static bool pwm_set_handler(const krul_args_t* args, krul_result_t* result,
                             krul_error_t* error) {
-    char channel[32];
     int32_t duty;
     int32_t period;
-    int index = get_pwm(args, channel, sizeof(channel));
+    int index = get_pwm(args);
     (void)error;
     if (index < 0 || !krul_args_get_i32(args, "duty_cycle", &duty) ||
         !krul_args_get_i32(args, "period_counter", &period))
@@ -291,10 +299,10 @@ static bool pwm_set_handler(const krul_args_t* args, krul_result_t* result,
 static bool can_send_handler(const krul_args_t* args, krul_result_t* result,
                              krul_error_t* error) {
     char data[65];
-    char channel[16];
+    int32_t channel = 0;
     int32_t identifier;
     (void)error;
-    if (!krul_args_get_string(args, "channel", channel, sizeof(channel)) ||
+    if (!krul_args_get_enum(args, "channel", &channel) ||
         !krul_args_get_string(args, "data", data, sizeof(data)) ||
         !krul_args_get_i32(args, "id", &identifier))
         return false;
@@ -306,11 +314,10 @@ static bool can_send_handler(const krul_args_t* args, krul_result_t* result,
 
 static bool uart_write_handler(const krul_args_t* args, krul_result_t* result,
                                krul_error_t* error) {
-    char destination[16];
+    int32_t destination = 0;
     char data[129];
     (void)error;
-    return krul_args_get_string(args, "destination", destination,
-                                sizeof(destination)) &&
+    return krul_args_get_enum(args, "destination", &destination) &&
            krul_args_get_string(args, "data", data, sizeof(data)) &&
            krul_result_put_u32(result, "bytes", (uint32_t)strlen(data)) &&
            krul_result_ok(result);
@@ -333,8 +340,8 @@ static memory_region_t* find_mcu_region(uint32_t address, uint32_t size,
     return NULL;
 }
 
-static uint8_t* external_data(const char* memory) {
-    uint8_t** data = strcmp(memory, "FRAM") == 0
+static uint8_t* external_data(int32_t memory) {
+    uint8_t** data = memory == 1
                          ? &active_emulator->fram : &active_emulator->mram;
     if (*data == NULL) *data = (uint8_t*)calloc(EXTERNAL_MEMORY_SIZE, 1U);
     return *data;
@@ -342,17 +349,17 @@ static uint8_t* external_data(const char* memory) {
 
 static bool mem_read_handler(const krul_args_t* args, krul_result_t* result,
                              krul_error_t* error) {
-    char memory[8];
+    int32_t memory = 0;
     int32_t address_value;
     int32_t size_value;
-    if (!krul_args_get_string(args, "memory", memory, sizeof(memory)) ||
+    if (!krul_args_get_enum(args, "memory", &memory) ||
         !krul_args_get_i32(args, "address", &address_value) ||
         !krul_args_get_i32(args, "size", &size_value))
         return false;
     uint32_t address = (uint32_t)address_value;
     uint32_t size = (uint32_t)size_value;
     uint8_t bytes[MEM_MAX_BUFFER] = {0};
-    if (strcmp(memory, "MCU") == 0) {
+    if (memory == 0) {
         memory_region_t* region = find_mcu_region(address, size, false);
         if (region == NULL) {
             krul_error_set(error, KRUL_ERROR_OUT_OF_RANGE,
@@ -365,13 +372,13 @@ static bool mem_read_handler(const krul_args_t* args, krul_result_t* result,
     } else {
         if (address >= EXTERNAL_MEMORY_SIZE || size > EXTERNAL_MEMORY_SIZE - address) {
             krul_error_set(error, KRUL_ERROR_OUT_OF_RANGE,
-                           "%s is unavailable or range is invalid", memory);
+                           "External memory is unavailable or range is invalid");
             return false;
         }
         uint8_t* data = external_data(memory);
         if (data == NULL) return false;
         memcpy(bytes, data + address, size);
-        active_emulator->selected_qspi_bank = strcmp(memory, "FRAM") == 0 ? 2 : 1;
+        active_emulator->selected_qspi_bank = memory == 1 ? 2 : 1;
     }
     char hex[MEM_MAX_BUFFER * 2U + 1U];
     for (size_t i = 0U; i < size; ++i)
@@ -382,17 +389,17 @@ static bool mem_read_handler(const krul_args_t* args, krul_result_t* result,
 
 static bool mem_write_handler(const krul_args_t* args, krul_result_t* result,
                               krul_error_t* error) {
-    char memory[8];
+    int32_t memory = 0;
     char data[MEM_MAX_BUFFER + 1U];
     int32_t address_value;
-    if (!krul_args_get_string(args, "memory", memory, sizeof(memory)) ||
+    if (!krul_args_get_enum(args, "memory", &memory) ||
         !krul_args_get_string(args, "data", data, sizeof(data)) ||
         !krul_args_get_i32(args, "address", &address_value))
         return false;
     uint32_t address = (uint32_t)address_value;
     uint32_t size = (uint32_t)strlen(data);
     uint8_t* destination;
-    if (strcmp(memory, "MCU") == 0) {
+    if (memory == 0) {
         memory_region_t* region = find_mcu_region(address, size, true);
         if (region == NULL) {
             krul_error_set(error, KRUL_ERROR_OUT_OF_RANGE,
@@ -404,12 +411,12 @@ static bool mem_write_handler(const krul_args_t* args, krul_result_t* result,
     } else {
         if (address >= EXTERNAL_MEMORY_SIZE || size > EXTERNAL_MEMORY_SIZE - address) {
             krul_error_set(error, KRUL_ERROR_OUT_OF_RANGE,
-                           "%s is unavailable or range is invalid", memory);
+                           "External memory is unavailable or range is invalid");
             return false;
         }
         destination = external_data(memory);
         if (destination != NULL) destination += address;
-        active_emulator->selected_qspi_bank = strcmp(memory, "FRAM") == 0 ? 2 : 1;
+        active_emulator->selected_qspi_bank = memory == 1 ? 2 : 1;
     }
     if (destination == NULL) {
         krul_error_set(error, KRUL_ERROR_EXECUTION,
@@ -451,31 +458,31 @@ static bool temperature_read_handler(const krul_args_t* args,
 static const krul_field_desc_t describe_params[] = {
     KRUL_STRING_REQUIRED("name", "Имя команды", 1, 47)};
 static const krul_field_desc_t dac_set_params[] = {
-    KRUL_ENUM_DEFAULT("channel", "Канал", dac_values, "DACREF_MCU"),
+    KRUL_ENUM_DEFAULT("channel", "Канал", dac_values, 0),
     {.name = "value", .label = "Значение", .type = KRUL_TYPE_I32,
      .widget = KRUL_WIDGET_SPECIAL_DAC, .has_default = true,
      .has_constraints = true, .default_value.i32 = 0,
      .constraints.i32 = {.min = 0, .max = 4095}}};
 static const krul_field_desc_t dac_read_params[] = {
-    KRUL_ENUM_DEFAULT("channel", "Канал", dac_values, "DACREF_MCU")};
+    KRUL_ENUM_DEFAULT("channel", "Канал", dac_values, 0)};
 static const krul_field_desc_t pwm_params[] = {
-    KRUL_ENUM_DEFAULT("channel", "Канал", pwm_values, "ARK_PWM1_1"),
+    KRUL_ENUM_DEFAULT("channel", "Канал", pwm_values, 0),
     KRUL_I32_DEFAULT("duty_cycle", "Скважность, %", 0, 100, 0),
     KRUL_I32_DEFAULT("period_counter", "Период счётчика (такты таймера)",
                      1, 65535, 100)};
 static const krul_field_desc_t can_send_params[] = {
-    KRUL_ENUM_DEFAULT("channel", "Канал", fdcan_values, "FDCAN1"),
+    KRUL_ENUM_DEFAULT("channel", "Канал", fdcan_values, 0),
     KRUL_I32_DEFAULT("id", "Extended CAN ID", 0, 0x1FFFFFFF, 0x100),
     KRUL_STRING_REQUIRED("data", "Данные", 0, 64)};
 static const krul_field_desc_t uart_params[] = {
-    KRUL_ENUM_DEFAULT("destination", "Интерфейс", uart_values, "UART4"),
+    KRUL_ENUM_DEFAULT("destination", "Интерфейс", uart_values, 0),
     KRUL_STRING_REQUIRED("data", "Данные", 1, 128)};
 static const krul_field_desc_t mem_read_params[] = {
-    KRUL_ENUM_DEFAULT("memory", "Память", memory_values, "MCU"),
+    KRUL_ENUM_DEFAULT("memory", "Память", memory_values, 0),
     KRUL_I32_DEFAULT("address", "Адрес", 0, INT32_MAX, D2_SRAM_START),
     KRUL_I32_DEFAULT("size", "Размер", 1, MEM_MAX_BUFFER, 16)};
 static const krul_field_desc_t mem_write_params[] = {
-    KRUL_ENUM_DEFAULT("memory", "Память", memory_values, "MCU"),
+    KRUL_ENUM_DEFAULT("memory", "Память", memory_values, 0),
     KRUL_I32_DEFAULT("address", "Адрес", 0, INT32_MAX, D2_SRAM_START),
     KRUL_STRING_REQUIRED("data", "Данные", 1, MEM_MAX_BUFFER)};
 
@@ -563,6 +570,7 @@ static const krul_field_desc_t temperature_result[] = {
      .result_count = ARRAY_SIZE(result_), .handler = handler_}
 
 static const krul_command_t cmd_whoami = {.name = "WHOAMI", .type = KRUL_CMD_BUILTIN};
+static const krul_command_t cmd_ping = {.name = "PING", .type = KRUL_CMD_BUILTIN};
 static const krul_command_t cmd_list = {.name = "CMD_LIST", .type = KRUL_CMD_BUILTIN};
 static const krul_command_t cmd_describe = {
     .name = "DESCRIBE", .type = KRUL_CMD_BUILTIN, .params = describe_params,
@@ -626,7 +634,7 @@ static const krul_command_t cmd_temperature = {
     .default_period_ms = 2000, .handler = temperature_read_handler};
 
 static const krul_command_t* const commands[] = {
-    &cmd_whoami, &cmd_list, &cmd_describe, &cmd_pin_get, &cmd_pin_set,
+    &cmd_ping, &cmd_whoami, &cmd_list, &cmd_describe, &cmd_pin_get, &cmd_pin_set,
     &cmd_adc_read, &cmd_dac_set, &cmd_dac_read, &cmd_pwm_set,
     &cmd_can_send, &cmd_uart_write, &cmd_mem_read,
     &cmd_mem_write, &cmd_qspi_status, &cmd_temperature};
@@ -654,7 +662,7 @@ ark_emulator_server_t* ark_emulator_server_create(void) {
     }
     const krul_server_config_t config = {
         .commands = commands, .command_count = ARRAY_SIZE(commands),
-        .device_name = "АРК", .firmware_version = "1.0.0", .protocol_version = 3U,
+        .device_name = "АРК", .firmware_version = "1.0.0", .protocol_version = 4U,
         .codec = serde_json(&emulator->json_codec),
         .response_buffer = emulator->json_response,
         .response_capacity = ARK_EMULATOR_FRAME_SIZE};

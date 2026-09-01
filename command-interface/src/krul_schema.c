@@ -11,8 +11,6 @@
 #include <math.h>
 #include <string.h>
 
-#define KRUL_MAX_ENUM_VALUE 128U
-
 static bool descriptor_valid(const krul_field_desc_t* field, bool output,
                              uint8_t depth) {
     /* Результат не может иметь default: обработчик обязан явно вернуть каждое поле. */
@@ -59,13 +57,14 @@ static bool descriptor_valid(const krul_field_desc_t* field, bool output,
             return false;
         for (uint16_t index = 0U; index < field->constraints.enumeration.count;
              ++index) {
-            const char* value =
-                field->constraints.enumeration.values[index].value;
             const char* title =
                 field->constraints.enumeration.values[index].title;
-            if (value == NULL || title == NULL ||
-                strlen(value) >= KRUL_MAX_ENUM_VALUE)
-                return false;
+            if (title == NULL) return false;
+            for (uint16_t inner = (uint16_t)(index + 1U);
+                 inner < field->constraints.enumeration.count; ++inner)
+                if (field->constraints.enumeration.values[index].value ==
+                    field->constraints.enumeration.values[inner].value)
+                    return false;
         }
     } else if (field->type == KRUL_TYPE_ARRAY) {
         if (field->schema.array.element == NULL ||
@@ -128,13 +127,11 @@ static bool descriptor_valid(const krul_field_desc_t* field, bool output,
                     return false;
                 break;
             case KRUL_TYPE_ENUM: {
-                if (field->default_value.string == NULL) return false;
                 bool found = false;
                 for (uint16_t index = 0U;
                      index < field->constraints.enumeration.count; ++index) {
-                    if (strcmp(field->default_value.string,
-                               field->constraints.enumeration.values[index]
-                                   .value) == 0)
+                    if (field->default_value.i32 ==
+                        field->constraints.enumeration.values[index].value)
                         found = true;
                 }
                 if (!found) return false;
@@ -164,8 +161,10 @@ static bool descriptor_valid(const krul_field_desc_t* field, bool output,
                     value.value.boolean = field->default_value.boolean;
                     break;
                 case KRUL_TYPE_STRING:
-                case KRUL_TYPE_ENUM:
                     value.value.string = field->default_value.string;
+                    break;
+                case KRUL_TYPE_ENUM:
+                    value.value.i32 = field->default_value.i32;
                     break;
                 case KRUL_TYPE_ARRAY:
                     value.value.count = 0U;

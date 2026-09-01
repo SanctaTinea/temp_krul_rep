@@ -15,7 +15,7 @@ extern "C" {
 
 typedef struct ark_emulator_server ark_emulator_server_t;
 
-/* Creates one stateful ARK Krul v3 emulator. */
+/* Creates one stateful ARK Krul v4 emulator. */
 ark_emulator_server_t* ark_emulator_server_create(void);
 
 /* Releases the emulator and all lazily allocated memory images. */

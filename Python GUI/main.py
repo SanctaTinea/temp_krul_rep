@@ -50,7 +50,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-PROTOCOL_VERSION = 3
+PROTOCOL_VERSION = 4
 DEFAULT_BAUDRATE = 115200
 SERIAL_TIMEOUT = 0.1
 RESPONSE_TIMEOUT_S = 4.0
@@ -201,11 +201,13 @@ class Indicator(QWidget):
 
 
 class PinCard(QFrame):
-    set_requested = Signal(str, int)
+    set_requested = Signal(object, int)
 
-    def __init__(self, name: str, pin_type: str, state: int):
+    def __init__(self, name: str, pin_type: str, state: int,
+                 wire_value: Any | None = None):
         super().__init__()
         self.name = name
+        self.wire_value = name if wire_value is None else wire_value
         self.pin_type = pin_type
         self.setFrameShape(QFrame.StyledPanel)
         layout = QHBoxLayout(self)
@@ -264,8 +266,10 @@ class PinCard(QFrame):
                                     """)
             on_button.setCursor(Qt.PointingHandCursor)
             off_button.setCursor(Qt.PointingHandCursor)
-            on_button.clicked.connect(lambda: self.set_requested.emit(self.name, 1))
-            off_button.clicked.connect(lambda: self.set_requested.emit(self.name, 0))
+            on_button.clicked.connect(
+                lambda: self.set_requested.emit(self.wire_value, 1))
+            off_button.clicked.connect(
+                lambda: self.set_requested.emit(self.wire_value, 0))
             layout.addWidget(on_button)
             layout.addWidget(off_button)
         self.set_state(state)
@@ -370,11 +374,13 @@ class ResponsivePinGrid(QWidget):
 
 class IOPanel(QWidget):
     def __init__(self, pins: list[dict[str, Any]], sender: Callable,
-                 target: str | None = None):
+                 target: str | None = None, all_value: Any = "ALL"):
         super().__init__()
         self.sender = sender
         self.target = target
+        self.all_value = all_value
         self.cards: dict[str, PinCard] = {}
+        self._cards_by_wire: dict[Any, PinCard] = {}
         self._in_flight = False
         outer = QVBoxLayout(self)
 
@@ -426,9 +432,11 @@ class IOPanel(QWidget):
             pin_type = str(pin.get("direction", pin.get("type", "IN"))).upper()
             if not name or pin_type not in {"IN", "OUT"}:
                 continue
-            card = PinCard(name, pin_type, int(pin.get("state", 0)))
+            wire_name = pin.get("_wire_name", pin.get("name"))
+            card = PinCard(name, pin_type, int(pin.get("state", 0)), wire_name)
             card.set_requested.connect(self._set_one)
             self.cards[name] = card
+            self._cards_by_wire[wire_name] = card
             (self.output_grid if pin_type == "OUT" else self.input_grid).add_card(card)
         self.filter_edit.textChanged.connect(self._filter)
 
@@ -436,7 +444,7 @@ class IOPanel(QWidget):
         self.input_grid.apply_filter(text)
         self.output_grid.apply_filter(text)
 
-    def _set_one(self, name: str, state: int) -> None:
+    def _set_one(self, name: Any, state: int) -> None:
         if self.target is None:
             params = {"pins": [{"name": name, "state": state}]}
         else:
@@ -447,7 +455,7 @@ class IOPanel(QWidget):
         if not any(card.pin_type == "OUT" for card in self.cards.values()):
             return
         if self.target is None:
-            params = {"pins": [{"name": "ALL", "state": state}]}
+            params = {"pins": [{"name": self.all_value, "state": state}]}
         else:
             params = {"target": self.target, "name": "ALL", "state": str(state)}
         self.sender("PIN_SET", params, self._updated)
@@ -457,7 +465,8 @@ class IOPanel(QWidget):
             return
         self._in_flight = True
         if self.target is None:
-            names = [card.name for card in self.cards.values() if card.pin_type == "IN"]
+            names = [card.wire_value for card in self.cards.values()
+                     if card.pin_type == "IN"]
             params = {"pins": names}
         else:
             params = {"target": self.target, "name": "IN"}
@@ -470,7 +479,7 @@ class IOPanel(QWidget):
         self._in_flight = True
         if self.target is None:
             names = [
-                card.name for card in self.cards.values()
+                card.wire_value for card in self.cards.values()
                 if card.pin_type == "OUT"
             ]
             params = {"pins": names}
@@ -487,12 +496,13 @@ class IOPanel(QWidget):
         if not pins and result.get("name"):
             pins = [result]
         for pin in pins:
-            if str(pin.get("name", "")).upper() == "ALL" and "state" in pin:
+            wire_name = pin.get("name")
+            if wire_name == self.all_value and "state" in pin:
                 for card in self.cards.values():
                     if card.pin_type == "OUT":
                         card.set_state(int(pin["state"]))
                 continue
-            card = self.cards.get(str(pin.get("name", "")))
+            card = self._cards_by_wire.get(wire_name)
             if card is not None:
                 card.set_state(int(pin.get("state", 0)))
 
@@ -1152,9 +1162,46 @@ class MainWindow(QMainWindow):
         pins = message.get("result", {}).get("pins", [])
         if not isinstance(pins, list):
             return
-        self.io_panel = IOPanel(pins, self.send_request)
+        descriptor = self.descriptors.get("PIN_GET", {})
+        names = self._gpio_enum_titles(descriptor.get("result", []), "name")
+        types = self._gpio_enum_titles(descriptor.get("result", []), "type")
+        normalized = []
+        for pin in pins:
+            if not isinstance(pin, dict):
+                continue
+            item = dict(pin)
+            raw_name = item.get("name")
+            item["_wire_name"] = raw_name
+            item["name"] = names.get(raw_name, raw_name)
+            item["type"] = types.get(item.get("type"), item.get("type"))
+            normalized.append(item)
+        set_values = self._gpio_enum_titles(
+            self.descriptors.get("PIN_SET", {}).get("params", []), "name")
+        self.io_panel = IOPanel(
+            normalized, self.send_request,
+            all_value=next(iter(set_values), "ALL"))
         self.io_panels.append(self.io_panel)
         self.tabs.insertTab(1, self.io_panel, "IO")
+
+    @staticmethod
+    def _gpio_enum_titles(value: Any, field_name: str) -> dict[Any, str]:
+        if isinstance(value, dict):
+            if value.get("name") == field_name and value.get("type") == "enum":
+                return {
+                    item.get("value"): str(item.get("title", item.get("value", "")))
+                    for item in value.get("constraints", {}).get("values", [])
+                    if isinstance(item, dict) and "value" in item
+                }
+            for child in value.values():
+                found = MainWindow._gpio_enum_titles(child, field_name)
+                if found:
+                    return found
+        elif isinstance(value, list):
+            for child in value:
+                found = MainWindow._gpio_enum_titles(child, field_name)
+                if found:
+                    return found
+        return {}
 
     def _has_targeted_io(self) -> bool:
         descriptor = self.descriptors.get("PIN_GET", {})

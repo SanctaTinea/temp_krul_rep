@@ -55,7 +55,7 @@ static inline serde_key_t krul_field_key(const krul_field_desc_t* field) {
 }
 
 static inline uint16_t krul_field_tag(const krul_field_desc_t* field) {
-    return field->tag != 0U ? field->tag : serde_key_tag(field->name);
+    return field->tag != 0 ? field->tag : serde_key_tag(field->name);
 }
 
 const krul_field_desc_t* krul_find_field(const krul_field_desc_t* fields,

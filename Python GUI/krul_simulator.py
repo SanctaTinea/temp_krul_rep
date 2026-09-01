@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stateful Krul v3 simulator for GUI development without an STM32 board."""
+"""Stateful Krul v4 simulator for GUI development without an STM32 board."""
 
 from __future__ import annotations
 
@@ -20,7 +20,8 @@ def _enum_field(name: str | None, label: str | None,
     field: dict[str, Any] = {
         "type": "enum",
         "constraints": {
-            "values": [{"value": value, "title": value} for value in values]
+            "values": [{"value": index, "title": value}
+                       for index, value in enumerate(values)]
         },
     }
     if name is not None:
@@ -97,6 +98,7 @@ PIN_SET_ITEM = {
 
 def _descriptors() -> dict[str, dict[str, Any]]:
     builtins = {
+        "PING": {"cmd": "PING", "builtin": True, "title": "PING"},
         "WHOAMI": {"cmd": "WHOAMI", "builtin": True, "title": "WHOAMI"},
         "CMD_LIST": {"cmd": "CMD_LIST", "builtin": True, "title": "CMD_LIST"},
         "DESCRIBE": {
@@ -276,7 +278,7 @@ def _descriptors() -> dict[str, dict[str, Any]]:
                         "channel", "Канал",
                         ["PWM_CH1", "PWM_CH2", "PWM_CH3", "PWM_CH4"],
                     ),
-                    "default": "PWM_CH1",
+                    "default": 0,
                 },
                 {
                     "name": "duty_cycle",
@@ -323,7 +325,7 @@ def _descriptors() -> dict[str, dict[str, Any]]:
                 {"name": "enabled", "label": "Флаг", "type": "boolean", "default": True},
                 {
                     **_enum_field("mode", "Список", ["standby", "manual", "auto"]),
-                    "default": "auto",
+                    "default": 2,
                 },
             ],
             "result": [
@@ -369,7 +371,7 @@ def _descriptors() -> dict[str, dict[str, Any]]:
                 {
                     **_enum_field("severity", "Severity",
                                   ["debug", "info", "warning", "error"]),
-                    "default": "info",
+                    "default": 1,
                 },
                 {
                     "name": "message",
@@ -431,7 +433,7 @@ def _descriptors() -> dict[str, dict[str, Any]]:
             "order": 20,
             "params": [{
                 **_enum_field("scope", "Область", ["quick", "memory", "full"]),
-                "default": "quick",
+                "default": 0,
             }],
             "result": [
                 {"name": "passed", "label": "Результат", "type": "boolean"},
@@ -506,7 +508,7 @@ def _descriptors() -> dict[str, dict[str, Any]]:
                 },
                 {
                     **_enum_field("mode", "Режим", ["manual", "automatic", "service"]),
-                    "default": "manual",
+                    "default": 0,
                 },
             ],
             "result": [
@@ -548,7 +550,7 @@ class DispatchResult:
 
 
 class KrulSimulator:
-    """Thread-safe, stateful implementation of a useful Krul v3 subset."""
+    """Thread-safe, stateful implementation of a useful Krul v4 subset."""
 
     def __init__(self, clock: Callable[[], float] = time.monotonic) -> None:
         self._lock = threading.Lock()
@@ -598,6 +600,9 @@ class KrulSimulator:
                 raise ProtocolFailure(2, "Field 'cmd' must be a string")
             if command not in DESCRIPTORS:
                 raise ProtocolFailure(6, f"Unknown command '{command}'")
+            if command == "PING":
+                return DispatchResult(
+                    {"id": transaction, "success": True}, [])
             params = request.get("params", {})
             if not isinstance(params, dict):
                 raise ProtocolFailure(2, "Field 'params' must be an object")
@@ -610,7 +615,7 @@ class KrulSimulator:
                  params: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
         if command == "WHOAMI":
             return {
-                "protocol_version": 3,
+                "protocol_version": 4,
                 "device_name": "ARK-PC-SIM",
                 "device_id": "ARK-PC-SIM-01",
                 "firmware": "sim-1.0.0",
@@ -626,62 +631,69 @@ class KrulSimulator:
                 raise ProtocolFailure(6, f"Unknown command '{name}'")
             return descriptor, []
         if command == "PIN_GET":
-            names = params.get("pins", [])
-            if not isinstance(names, list) or not all(isinstance(name, str) for name in names):
-                raise ProtocolFailure(2, "Field 'pins' must be an array of strings")
-            selected = names or PIN_NAMES
-            if any(name not in PIN_NAMES for name in selected):
+            codes = params.get("pins", [])
+            if not isinstance(codes, list) or not all(
+                    isinstance(code, int) and not isinstance(code, bool)
+                    for code in codes):
+                raise ProtocolFailure(2, "Field 'pins' must be an array of enum integers")
+            if any(not 0 <= code < len(PIN_NAMES) for code in codes):
                 raise ProtocolFailure(3, "Unknown pin")
+            selected = codes or list(range(len(PIN_NAMES)))
             with self._lock:
                 now = self._clock()
                 pins = [
                     {
-                        "name": name,
-                        "type": PIN_DIRECTIONS[name],
-                        "state": self._pin_state(name, now),
+                        "name": code,
+                        "type": 1 if PIN_DIRECTIONS[PIN_NAMES[code]] == "OUT" else 0,
+                        "state": self._pin_state(PIN_NAMES[code], now),
                     }
-                    for name in selected
+                    for code in selected
                 ]
             return {"pins": pins}, []
         if command == "PIN_GET_V2":
-            names = params.get("pins", [])
-            if not isinstance(names, list) or not all(isinstance(name, str) for name in names):
-                raise ProtocolFailure(2, "Field 'pins' must be an array of strings")
-            selected = names or PIN_NAMES
-            if any(name not in PIN_NAMES for name in selected):
+            codes = params.get("pins", [])
+            if not isinstance(codes, list) or not all(
+                    isinstance(code, int) and not isinstance(code, bool)
+                    for code in codes):
+                raise ProtocolFailure(2, "Field 'pins' must be an array of enum integers")
+            if any(not 0 <= code < len(PIN_NAMES) for code in codes):
                 raise ProtocolFailure(3, "Unknown pin")
+            selected = codes or list(range(len(PIN_NAMES)))
             with self._lock:
                 now = self._clock()
                 pins = [
                     {
-                        "name": name,
-                        "type": PIN_DIRECTIONS[name],
-                        "state": self._pin_state(name, now),
+                        "name": code,
+                        "type": 1 if PIN_DIRECTIONS[PIN_NAMES[code]] == "OUT" else 0,
+                        "state": self._pin_state(PIN_NAMES[code], now),
                     }
-                    for name in selected
+                    for code in selected
                 ]
             return {"pins": pins}, []
         if command == "PIN_SET":
             pins = params.get("pins")
             if not isinstance(pins, list) or not pins:
                 raise ProtocolFailure(1, "Field 'pins' must be a non-empty array")
-            updates: list[tuple[str, int]] = []
+            updates: list[tuple[int, str, int]] = []
             for pin in pins:
                 if not isinstance(pin, dict):
                     raise ProtocolFailure(2, "Pin update must be an object")
-                name, state = pin.get("name"), pin.get("state")
-                if name == "ALL" and len(pins) == 1 and not isinstance(state, bool) \
+                code, state = pin.get("name"), pin.get("state")
+                if code == 0 and len(pins) == 1 and not isinstance(state, bool) \
                         and state in (0, 1):
-                    updates.extend((output_name, state) for output_name in OUTPUT_PINS)
+                    updates.extend((index + 1, output_name, state)
+                                   for index, output_name in enumerate(OUTPUT_PINS))
                     continue
-                if name not in OUTPUT_PINS or isinstance(state, bool) or state not in (0, 1):
+                if isinstance(code, bool) or not isinstance(code, int) or \
+                        not 1 <= code <= len(OUTPUT_PINS) or \
+                        isinstance(state, bool) or state not in (0, 1):
                     raise ProtocolFailure(3, "Invalid output pin or state")
-                updates.append((name, state))
+                updates.append((code, OUTPUT_PINS[code - 1], state))
             with self._lock:
-                for name, state in updates:
+                for _code, name, state in updates:
                     self._pins[name] = state
-            return {"pins": [{"name": name, "state": state}
-                              for name, state in updates]}, []
+            return {"pins": [{"name": code, "state": state}
+                              for code, _name, state in updates]}, []
         if command == "ECHO":
             text = params.get("text")
             count = params.get("count", 1)
@@ -697,7 +709,7 @@ class KrulSimulator:
             integer = params.get("integer", 42)
             floating = params.get("floating", 3.3)
             enabled = params.get("enabled", True)
-            mode = params.get("mode", "auto")
+            mode = params.get("mode", 2)
             if not isinstance(text, str) or not 1 <= len(text) <= 80:
                 raise ProtocolFailure(3, "Field 'text' is out of range")
             if isinstance(integer, bool) or not isinstance(integer, int) \
@@ -708,7 +720,7 @@ class KrulSimulator:
                 raise ProtocolFailure(3, "Field 'floating' is out of range")
             if not isinstance(enabled, bool):
                 raise ProtocolFailure(2, "Field 'enabled' must be a boolean")
-            if mode not in {"standby", "manual", "auto"}:
+            if isinstance(mode, bool) or mode not in {0, 1, 2}:
                 raise ProtocolFailure(3, "Unknown gallery mode")
             return {
                 "text": text,
@@ -716,7 +728,7 @@ class KrulSimulator:
                 "floating": float(floating),
                 "enabled": enabled,
                 "mode": mode,
-                "terminal": f"Widget gallery executed in {mode} mode",
+                "terminal": f"Widget gallery executed in mode {mode}",
             }, []
         if command == "DAC_SET":
             value = params.get("value", 2048)
@@ -728,10 +740,12 @@ class KrulSimulator:
                 self._dac_value = value
             return {"value": value, "voltage": value * 3.3 / 4095.0}, []
         if command == "PWM_SET":
-            channel = params.get("channel")
+            channel = params.get("channel", 0)
             duty_cycle = params.get("duty_cycle")
             period_counter = params.get("period_counter")
-            if channel not in self._pwm:
+            channels = tuple(self._pwm)
+            if isinstance(channel, bool) or not isinstance(channel, int) or \
+                    not 0 <= channel < len(channels):
                 raise ProtocolFailure(3, "Unknown PWM channel")
             for name, value in (
                 ("duty_cycle", duty_cycle),
@@ -742,7 +756,7 @@ class KrulSimulator:
             if not 0 <= duty_cycle <= 100 or not 1 <= period_counter <= 1000000:
                 raise ProtocolFailure(3, "PWM parameter is out of range")
             with self._lock:
-                self._pwm[channel] = {
+                self._pwm[channels[channel]] = {
                     "duty_cycle": duty_cycle,
                     "period_counter": period_counter,
                 }
@@ -792,12 +806,14 @@ class KrulSimulator:
                 "value_AIN12": 2350 - tick,
             }, []
         if command == "LOG_EMIT":
-            severity = params.get("severity", "info")
+            severity = params.get("severity", 1)
             message = params.get("message", "Hello from simulator")
-            if severity not in {"debug", "info", "warning", "error"} \
-                    or not isinstance(message, str):
+            severities = ("debug", "info", "warning", "error")
+            if isinstance(severity, bool) or not isinstance(severity, int) or \
+                    not 0 <= severity < len(severities) or not isinstance(message, str):
                 raise ProtocolFailure(3, "Invalid log severity or message")
-            event = {"event": "log", "data": {"severity": severity, "message": message}}
+            event = {"event": "log", "data": {
+                "severity": severities[severity], "message": message}}
             return {"queued": True}, [event]
         if command == "DELAY":
             milliseconds = params.get("milliseconds", 250)
@@ -819,9 +835,10 @@ class KrulSimulator:
             time.sleep(milliseconds / 1000.0)
             return {"text": text, "milliseconds": milliseconds}, []
         if command == "SELF_TEST":
-            scope = params.get("scope", "quick")
-            delays = {"quick": 0.35, "memory": 0.8, "full": 1.5}
-            if scope not in delays:
+            scope = params.get("scope", 0)
+            delays = (0.35, 0.8, 1.5)
+            if isinstance(scope, bool) or not isinstance(scope, int) or \
+                    not 0 <= scope < len(delays):
                 raise ProtocolFailure(3, "Unknown self-test scope")
             time.sleep(delays[scope])
             return {
@@ -850,26 +867,24 @@ class KrulSimulator:
             with self._lock:
                 self._adc_tick = (self._adc_tick + 1) % 1000
                 tick = self._adc_tick
-            state = "alarm" if tick % 29 == 0 else (
-                "warning" if tick % 11 == 0 else "normal"
-            )
+            state = 2 if tick % 29 == 0 else (1 if tick % 11 == 0 else 0)
             return {
                 "value": round(index * 10.0 + tick / 10.0, 3),
-                "healthy": state != "alarm",
+                "healthy": state != 2,
                 "state": state,
             }, []
         if command.startswith("DEMO_ACTUATOR_"):
             index = int(command.rsplit("_", 1)[1])
             enabled = params.get("enabled", False)
             setpoint = params.get("setpoint", float(index))
-            mode = params.get("mode", "manual")
+            mode = params.get("mode", 0)
             if not isinstance(enabled, bool):
                 raise ProtocolFailure(2, "Field 'enabled' must be a boolean")
             if isinstance(setpoint, bool) or not isinstance(setpoint, (int, float)):
                 raise ProtocolFailure(2, "Field 'setpoint' must be a number")
             if not 0.0 <= setpoint <= 100.0:
                 raise ProtocolFailure(3, "Actuator setpoint is out of range")
-            if mode not in {"manual", "automatic", "service"}:
+            if isinstance(mode, bool) or mode not in {0, 1, 2}:
                 raise ProtocolFailure(3, "Unknown actuator mode")
             state = {
                 "enabled": enabled,

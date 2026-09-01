@@ -28,18 +28,20 @@ static bool unique_object_get(serde_codec_t codec, serde_node_t object,
 
 static bool begin_response(const krul_server_t* server, uint32_t id,
                            serde_writer_storage_t* storage,
-                           serde_writer_t* writer) {
+                           serde_writer_t* writer, bool with_result) {
     if (!serde_writer_open(server->config.codec, storage,
                            server->config.response_buffer,
                            server->config.response_capacity, writer))
         return false;
     serde_key_t id_key = krul_named_key("id");
     serde_key_t success_key = krul_named_key("success");
+    if (!serde_begin_object(*writer, NULL) ||
+        !serde_put_u32(*writer, &id_key, id) ||
+        !serde_put_bool(*writer, &success_key, true))
+        return false;
+    if (!with_result) return true;
     serde_key_t result_key = krul_named_key("result");
-    return serde_begin_object(*writer, NULL) &&
-           serde_put_u32(*writer, &id_key, id) &&
-           serde_put_bool(*writer, &success_key, true) &&
-           serde_begin_object(*writer, &result_key);
+    return serde_begin_object(*writer, &result_key);
 }
 
 static void init_result(krul_result_t* result, serde_writer_t writer,
@@ -72,7 +74,7 @@ static bool validate_result(krul_result_t* result, bool success) {
 
 static size_t finish_response(krul_server_t* server, uint32_t id,
                               serde_writer_t writer, krul_error_t* error,
-                              bool success) {
+                              bool success, bool with_result) {
     if (!success) {
         if (error->message[0] == '\0')
             krul_error_set(error, KRUL_ERROR_EXECUTION,
@@ -81,7 +83,7 @@ static size_t finish_response(krul_server_t* server, uint32_t id,
                                  server->config.response_buffer,
                                  server->config.response_capacity);
     }
-    serde_end_object(writer);
+    if (with_result) serde_end_object(writer);
     serde_end_object(writer);
     size_t encoded = 0U;
     if (!serde_writer_finish(writer, &encoded))
@@ -224,7 +226,7 @@ bool krul_pending_encode_next(krul_server_t* server) {
     } else {
         serde_writer_storage_t storage;
         serde_writer_t writer;
-        if (begin_response(server, slot->id, &storage, &writer)) {
+        if (begin_response(server, slot->id, &storage, &writer, true)) {
             krul_error_t error = {.code = KRUL_ERROR_EXECUTION};
             krul_result_t result;
             init_result(&result, writer, &error, server, slot->command,
@@ -242,7 +244,8 @@ bool krul_pending_encode_next(krul_server_t* server) {
                 success = false;
             }
             success = validate_result(&result, success);
-            size = finish_response(server, slot->id, writer, &error, success);
+            size = finish_response(server, slot->id, writer, &error, success,
+                                   true);
         }
     }
     if (size == 0U) return false;
@@ -354,7 +357,10 @@ krul_dispatch_status_t krul_dispatch(krul_server_t* server,
                         .params_present = has_params};
     serde_writer_storage_t storage;
     serde_writer_t writer;
-    if (!begin_response(server, id, &storage, &writer))
+    bool with_result = !(command->type == KRUL_CMD_BUILTIN &&
+                         command->handler == NULL &&
+                         strcmp(command->name, "PING") == 0);
+    if (!begin_response(server, id, &storage, &writer, with_result))
         return KRUL_DISPATCH_FAILED;
 
     bool success = false;
@@ -375,5 +381,6 @@ krul_dispatch_status_t krul_dispatch(krul_server_t* server,
         }
         success = validate_result(&result, success);
     }
-    return publish(server, finish_response(server, id, writer, &error, success));
+    return publish(server, finish_response(server, id, writer, &error, success,
+                                           with_result));
 }

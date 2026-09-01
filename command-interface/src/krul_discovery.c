@@ -131,7 +131,7 @@ static bool serialize_field_at(serde_writer_t writer,
                 for (uint16_t index = 0U;
                      index < field->constraints.enumeration.count; ++index) {
                     serde_begin_object(writer, NULL);
-                    serde_put_string(
+                    serde_put_i32(
                         writer, &value,
                         field->constraints.enumeration.values[index].value);
                     serde_put_string(
@@ -181,9 +181,12 @@ static bool serialize_field_at(serde_writer_t writer,
                                field->default_value.boolean);
                 break;
             case KRUL_TYPE_STRING:
-            case KRUL_TYPE_ENUM:
                 serde_put_string(writer, &default_key,
                                  field->default_value.string);
+                break;
+            case KRUL_TYPE_ENUM:
+                serde_put_i32(writer, &default_key,
+                              field->default_value.i32);
                 break;
             case KRUL_TYPE_ARRAY:
                 serde_begin_array(writer, &default_key);
@@ -276,6 +279,7 @@ bool krul_builtin_dispatch(const krul_server_t* server,
                            krul_error_t* error) {
     /* Встроенные команды без обработчика исполняются здесь, но используют тот же конверт,
      * запись и проверку входных params, что обычные команды. */
+    if (strcmp(command->name, "PING") == 0) return true;
     if (strcmp(command->name, "WHOAMI") == 0) {
         serde_key_t protocol = krul_named_key("protocol_version");
         serde_key_t device = krul_named_key("device_name");

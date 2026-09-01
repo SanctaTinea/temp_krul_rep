@@ -81,7 +81,7 @@ bool commands_init(void)
         .command_count = KRUL_ARRAY_SIZE(commands),
         .device_name = "EXAMPLE",
         .firmware_version = "1.0.0",
-        .protocol_version = 3,
+        .protocol_version = 4,
         .codec = serde_json(&json),
         .response_buffer = response_buffer,
         .response_capacity = sizeof(response_buffer),

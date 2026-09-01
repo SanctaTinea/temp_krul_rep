@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 
-from krul_simulator import KrulSimulator, SQUARE_WAVE_PIN
+from krul_simulator import KrulSimulator, PIN_NAMES, OUTPUT_PINS, SQUARE_WAVE_PIN
 
 
 def request(simulator: KrulSimulator, command: str, transaction: int,
@@ -17,11 +17,12 @@ def test_discovery_and_stateful_gpio() -> None:
     simulator = KrulSimulator()
 
     identity = request(simulator, "WHOAMI", 1)
-    assert identity["result"]["protocol_version"] == 3
+    assert identity["result"]["protocol_version"] == 4
     assert identity["result"]["device_id"] == "ARK-PC-SIM-01"
 
     commands = request(simulator, "CMD_LIST", 2)["result"]["cmd_name"]
-    assert {"DESCRIBE", "PIN_GET", "PIN_SET", "ECHO"}.issubset(commands)
+    assert {"PING", "DESCRIBE", "PIN_GET", "PIN_SET", "ECHO"}.issubset(commands)
+    assert request(simulator, "PING", 9) == {"id": 9, "success": True}
 
     pin_get = request(simulator, "DESCRIBE", 6, {"name": "PIN_GET"})["result"]
     pin_set = request(simulator, "DESCRIBE", 7, {"name": "PIN_SET"})["result"]
@@ -35,15 +36,16 @@ def test_discovery_and_stateful_gpio() -> None:
 
     updated = request(
         simulator, "PIN_SET", 4,
-        {"pins": [{"name": "LED_GREEN", "state": 1}]},
+        {"pins": [{"name": OUTPUT_PINS.index("LED_GREEN") + 1, "state": 1}]},
     )
     assert updated["success"]
-    pins = request(simulator, "PIN_GET", 5, {"pins": ["LED_GREEN"]})
+    pins = request(simulator, "PIN_GET", 5,
+                   {"pins": [PIN_NAMES.index("LED_GREEN")]})
     assert pins["result"]["pins"][0]["state"] == 1
 
     all_off = request(
         simulator, "PIN_SET", 8,
-        {"pins": [{"name": "ALL", "state": 0}]},
+        {"pins": [{"name": 0, "state": 0}]},
     )
     assert all_off["success"]
     assert len(all_off["result"]["pins"]) > 1
@@ -59,7 +61,7 @@ def test_validation_and_log_event() -> None:
     dispatched = simulator.dispatch({
         "cmd": "LOG_EMIT",
         "id": 2,
-        "params": {"severity": "warning", "message": "test event"},
+        "params": {"severity": 2, "message": "test event"},
     })
     assert dispatched.response["success"]
     assert dispatched.events == [{
@@ -78,10 +80,10 @@ def test_square_wave_input_has_two_second_period() -> None:
             simulator,
             "PIN_GET",
             transaction,
-            {"pins": [SQUARE_WAVE_PIN]},
+            {"pins": [PIN_NAMES.index(SQUARE_WAVE_PIN)]},
         )
         pin = response["result"]["pins"][0]
-        assert pin["type"] == "IN"
+        assert pin["type"] == 0
         return pin["state"]
 
     assert state_at(100.0, 10) == 0
@@ -143,11 +145,11 @@ def test_large_demo_groups_contain_many_working_commands() -> None:
     sensor = request(simulator, "DEMO_SENSOR_12", 3)
     actuator = request(
         simulator, "DEMO_ACTUATOR_12", 4,
-        {"enabled": True, "setpoint": 37.5, "mode": "automatic"},
+        {"enabled": True, "setpoint": 37.5, "mode": 1},
     )
-    assert sensor["success"] and sensor["result"]["state"] == "normal"
+    assert sensor["success"] and sensor["result"]["state"] == 0
     assert actuator["result"] == {
-        "applied": True, "actual": 37.5, "mode": "automatic",
+        "applied": True, "actual": 37.5, "mode": 1,
     }
 
 
