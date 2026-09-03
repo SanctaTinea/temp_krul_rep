@@ -573,6 +573,108 @@ def test_gpio_widget_uses_normal_tabs_and_supplies_io_commands(qtbot) -> None:
     assert len(gpioa.findChildren(gui.IOPanel)) == 1
 
 
+def test_gpio_widget_uses_group_as_pair_identifier(qtbot) -> None:
+    window = gui.MainWindow()
+    qtbot.addWidget(window)
+
+    def get_descriptor(command: str, group: str) -> dict:
+        return {
+            "cmd": command,
+            "tab": "GPIO",
+            "group": group,
+            "widget_hint": "special_gpio",
+            "params": [{"name": "pins", "type": "array"}],
+            "result": [],
+        }
+
+    def set_descriptor(command: str, group: str) -> dict:
+        return {
+            "cmd": command,
+            "tab": "GPIO",
+            "group": group,
+            "widget_hint": "special_gpio",
+            "params": [{
+                "name": "pins",
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "fields": [
+                        {"name": "name", "type": "enum"},
+                        {"name": "state", "type": "integer"},
+                    ],
+                },
+            }],
+            "result": [],
+        }
+
+    descriptors = [
+        get_descriptor("LOCAL_GET", "Локальные GPIO"),
+        set_descriptor("LOCAL_SET", "Локальные GPIO"),
+        get_descriptor("REMOTE_GET", "Удалённые GPIO"),
+        set_descriptor("REMOTE_SET", "Удалённые GPIO"),
+    ]
+    window.descriptors = {
+        str(descriptor["cmd"]): descriptor for descriptor in descriptors
+    }
+
+    hidden = window._prepare_command_widgets()
+
+    gpio_widgets = [
+        widget for widget in window.command_widgets
+        if isinstance(widget, gui.SpecialGpioCommandWidget)
+    ]
+    assert len(gpio_widgets) == 2
+    assert hidden == {"LOCAL_SET", "REMOTE_SET"}
+    assert {
+        widget.get_descriptors[0]["cmd"]: widget.set_command
+        for widget in gpio_widgets
+    } == {
+        "LOCAL_GET": "LOCAL_SET",
+        "REMOTE_GET": "REMOTE_SET",
+    }
+    assert window.command_widget_by_command["LOCAL_GET"].set_command == "LOCAL_SET"
+    assert window.command_widget_by_command["REMOTE_GET"].set_command == "REMOTE_SET"
+
+
+def test_invalid_gpio_group_does_not_disable_valid_pair(qtbot) -> None:
+    window = gui.MainWindow()
+    qtbot.addWidget(window)
+    warnings: list[tuple[str, str]] = []
+    window._append_terminal = lambda message, severity="info": warnings.append(
+        (message, severity)
+    )
+    window.descriptors = {
+        "GOOD_GET": {
+            "cmd": "GOOD_GET",
+            "group": "Исправная пара",
+            "widget_hint": "special_gpio",
+            "params": [{"name": "pins", "type": "array"}],
+        },
+        "GOOD_SET": {
+            "cmd": "GOOD_SET",
+            "group": "Исправная пара",
+            "widget_hint": "special_gpio",
+            "params": [{"name": "state", "type": "integer"}],
+        },
+        "BROKEN_GET": {
+            "cmd": "BROKEN_GET",
+            "group": "Неполная пара",
+            "widget_hint": "special_gpio",
+            "params": [{"name": "pins", "type": "array"}],
+        },
+    }
+
+    hidden = window._prepare_command_widgets()
+
+    assert hidden == {"GOOD_SET"}
+    assert "GOOD_GET" in window.command_widget_by_command
+    assert "BROKEN_GET" not in window.command_widget_by_command
+    assert any(
+        "group='Неполная пара'" in message and severity == "warning"
+        for message, severity in warnings
+    )
+
+
 def test_pwm_widget_and_group_are_always_full_width(qtbot) -> None:
     descriptor = {
         "cmd": "PWM_SET",

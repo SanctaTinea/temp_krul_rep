@@ -3593,7 +3593,7 @@ class MainWindow(QMainWindow):
     def _prepare_command_widgets(self) -> set[str]:
         self.command_widgets.clear()
         self.command_widget_by_command.clear()
-        grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        grouped: dict[tuple[str, str | None], list[dict[str, Any]]] = defaultdict(list)
         for descriptor in self.descriptors.values():
             hint = descriptor.get("widget_hint")
             if (
@@ -3602,14 +3602,29 @@ class MainWindow(QMainWindow):
                 and isinstance(hint, str)
                 and hint
             ):
-                grouped[hint].append(descriptor)
+                # A GPIO group is also its explicit read/write pairing key.
+                # Keep descriptors without a group in one legacy bucket so
+                # existing devices with a single PIN_GET/PIN_SET pair continue
+                # to work unchanged.  Other command widgets retain their
+                # historical grouping by widget hint alone.
+                pair_group = (
+                    str(descriptor.get("group") or "")
+                    if hint == "special_gpio"
+                    else None
+                )
+                grouped[(hint, pair_group)].append(descriptor)
 
         hidden: set[str] = set()
-        for hint, descriptors in grouped.items():
+        for (hint, pair_group), descriptors in grouped.items():
             widget_class = COMMAND_WIDGETS.get(hint)
+            group_context = (
+                f" (group={pair_group!r})"
+                if hint == "special_gpio" and pair_group
+                else ""
+            )
             if widget_class is None:
                 self._append_terminal(
-                    f"COMMAND_WIDGETS '{hint}' не зарегистрирован; команды "
+                    f"COMMAND_WIDGETS '{hint}'{group_context} не зарегистрирован; команды "
                     "будут показаны стандартными формами.",
                     "warning",
                 )
@@ -3629,7 +3644,8 @@ class MainWindow(QMainWindow):
                 widget = widget_class(self, descriptors)
             except WidgetCompatibilityError as exc:
                 self._append_terminal(
-                    f"COMMAND_WIDGETS '{hint}' отклонил дескрипторы: {exc}. "
+                    f"COMMAND_WIDGETS '{hint}'{group_context} отклонил "
+                    f"дескрипторы: {exc}. "
                     "Команды будут показаны стандартными формами.",
                     "warning",
                 )
