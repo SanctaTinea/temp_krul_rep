@@ -45,7 +45,7 @@ static uint32_t read_u32_le(const uint8_t* value) {
 }
 
 static void write_u32_le(uint8_t* output, uint32_t value) {
-    for (unsigned int index = 0U; index < 4U; ++index)
+    for (uint32_t index = 0U; index < 4U; ++index)
         output[index] = (uint8_t)(value >> (index * 8U));
 }
 
@@ -78,12 +78,18 @@ void krul_transport_parser_reset(krul_transport_parser_t* parser) {
     clear_frame(parser, true);
 }
 
+uint32_t magic_to_uint32(const uint8_t *magic) {
+	uint32_t num = 0;
+	num = (magic[0] << 8*3) | (magic[1] << 8*2) | (magic[2] << 8*1) | (magic[3] << 8*0);
+	return num;
+}
+
 static bool window_is_magic(krul_transport_parser_t* parser) {
-    if (parser->magic_window == UINT32_C(0x4B524A31)) {
+    if (parser->magic_window == magic_to_uint32(json_magic)) {
         parser->format = KRUL_TRANSPORT_FORMAT_JSON;
-    } else if (parser->magic_window == UINT32_C(0x4B524231)) {
+    } else if (parser->magic_window == magic_to_uint32(bson_magic)) {
         parser->format = KRUL_TRANSPORT_FORMAT_BSON;
-    } else if (parser->magic_window == UINT32_C(0x4B524331)) {
+    } else if (parser->magic_window == magic_to_uint32(cbor_magic)) {
         parser->format = KRUL_TRANSPORT_FORMAT_CBOR;
     } else {
         return false;
