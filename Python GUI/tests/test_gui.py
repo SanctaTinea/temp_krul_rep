@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 from PySide6.QtCore import QObject, QTimer, Signal
 
-import main as gui
+import Starset as gui
 from krul_simulator import PIN_NAMES, KrulSimulator, SimulatorServer
 from krul_wire import FORMAT_BSON, FORMAT_CBOR, FORMAT_JSON
 
@@ -64,7 +64,7 @@ def test_serial_worker_supports_socket_url(qtbot, wire_format: str) -> None:
         with qtbot.waitSignal(worker.line_received, timeout=2000) as received:
             worker.send_line('{"cmd":"WHOAMI","id":1}')
         response = json.loads(received.args[0])
-        assert response["result"]["device_name"] == "ARK-PC-SIM"
+        assert response["result"]["device_name"] == "KRUL-PC-SIM"
     finally:
         worker.stop()
         worker.wait(2000)
@@ -83,15 +83,17 @@ def test_full_discovery_over_fake_transport(qtbot, monkeypatch) -> None:
 
     window = gui.MainWindow(worker_factory=factory)
     qtbot.addWidget(window)
-    window.port_combo.setCurrentText("fake://ark")
+    window.port_combo.setCurrentText("fake://krul")
     window._toggle_connection()
 
     qtbot.waitUntil(lambda: window.io_panel is not None, timeout=3000)
-    assert "ARK-PC-SIM" in window.device_label.text()
+    assert "KRUL-PC-SIM" in window.device_label.text()
     assert "ECHO" in window.descriptors
     echo_form = next(form for form in window.forms if form.command == "ECHO")
-    assert echo_form.title() == (
-        "Echo — Type something; the virtual rabbit will echo it."
+    assert echo_form.command_title_label.text() == "Echo"
+    assert echo_form.description_label is not None
+    assert echo_form.description_label.text() == (
+        "Type something; the virtual rabbit will echo it."
     )
     assert set(window.io_panel.cards) == set(PIN_NAMES)
     assert created[0].sent[0]["cmd"] == "WHOAMI"
@@ -113,7 +115,7 @@ def test_nogui_command_is_not_rendered(qtbot) -> None:
 def test_response_ids_events_and_timeouts(qtbot) -> None:
     window = gui.MainWindow()
     qtbot.addWidget(window)
-    worker = FakeWorker("fake://ark", 115200, window)
+    worker = FakeWorker("fake://krul", 115200, window)
     window.worker = worker
     callbacks: list[tuple[str, int]] = []
 
@@ -149,4 +151,10 @@ def test_response_ids_events_and_timeouts(qtbot) -> None:
     expired: list[dict[str, Any]] = []
     window.pending[999] = ("DELAY", expired.append, time.monotonic() - 1)
     window._expire_requests()
-    assert expired[0]["error"]["code"] == -1
+    assert expired[0]["error"]["code"] == gui.CLIENT_ERROR_TIMEOUT
+    assert expired[0]["error"]["source"] == "client"
+
+    window._receive_line(json.dumps({
+        "id": 123456, "success": True, "result": {},
+    }))
+    assert "Несопоставленный ответ id=123456" in window.terminal.toPlainText()

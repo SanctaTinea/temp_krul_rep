@@ -1,4 +1,4 @@
-# ARK Krul Control Panel
+# Starset — Krul Control Panel
 
 ## Тестирование без платы
 
@@ -29,7 +29,7 @@ python -m pytest -q
 ```powershell
 cmake --preset PC_Debug
 cmake --build --preset PC_Debug
-.\build\PC_Debug\krul_host_server.exe
+.\build\PC_Debug\Tools\krul_host_server.exe
 ```
 
 Для него в GUI укажите `socket://127.0.0.1:7001`. В Developer Command Prompt

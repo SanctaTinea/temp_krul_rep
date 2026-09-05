@@ -1,8 +1,8 @@
 # Интерфейсы сериализации без динамической памяти
 
 Публичные заголовочные файлы содержат контракты API для Doxygen. Точка входа
-в создаваемую документацию находится в `Libs/docs/mainpage.md`, а небольшой
-пример настройки JSON/Krul — в `Libs/docs/getting_started.md`. Чтобы создать
+в создаваемую документацию находится в `docs/mainpage.md`, а небольшой
+пример настройки JSON/Krul — в `docs/getting_started.md`. Чтобы создать
 HTML-документацию, выполните `doxygen Doxyfile` из корня репозитория.
 
 `serde.h` определяет не зависящие от формата интерфейсы чтения и записи в виде
@@ -21,6 +21,12 @@ serde_json_init(&json, tokens, sizeof(tokens) / sizeof(tokens[0]));
 serde_codec_t codec = serde_json(&json);
 ```
 
+jsmn расходует по одному токену на каждый object, array, string, number,
+boolean и null, а также отдельный токен на каждый ключ объекта. Поэтому ёмкость
+можно оценить как число всех значений и контейнеров плюс число ключей. Для
+обычных команд используйте `SERDE_JSON_DEFAULT_TOKEN_COUNT`; исчерпание массива
+возвращается как `SERDE_ERROR_NO_SPACE` и не приводит к частичному разбору.
+
 Встроенный BSON-кодек не требует массива токенов и читает узлы прямо из
 входного буфера. Как и для JSON, буфер должен жить дольше декодированных узлов:
 
@@ -35,14 +41,14 @@ serde_codec_t codec = serde_bson(&bson);
 `f32` кодируется как BSON `double`. Писатель создаёт корневой BSON document;
 вложенные объекты и массивы поддерживаются до глубины 12.
 
-ARK передаёт JSON, BSON и CBOR через Krul transport v1 (`KRJ1`/`KRB1`/`KRC1`, внешняя длина
+Krul передаёт JSON, BSON и CBOR через transport v1 (`KRJ1`/`KRB1`/`KRC1`, внешняя длина
 payload и CRC-16). Для BSON внешняя длина дополнительно совпадает с little-endian
 signed `int32` document length в начале самого payload.
 
 Встроенный heap-free CBOR-кодек инициализируется через `serde_cbor_init()` и
 выбирается через `serde_cbor()`. Он читает узлы напрямую из входного буфера и
 пишет map/array неопределённой длины. Для компактных map-ключей используется
-`serde_key_t.tag`; правила Krul-профиля описаны в `Libs/docs/cbor_protocol_v4.md`.
+`serde_key_t.tag`; правила Krul-профиля описаны в `docs/cbor_protocol_v4.md`.
 
 Чтобы добавить другой двоичный формат, реализуйте `serde_codec_mtab_t` и
 `serde_writer_mtab_t`. Вносить зависящие от кодека изменения в Krul и

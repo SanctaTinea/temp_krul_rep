@@ -309,7 +309,7 @@ def _descriptors() -> dict[str, dict[str, Any]]:
             "params": [
                 {
                     "name": "text", "label": "Строка", "type": "string",
-                    "default": "ARK simulator",
+                    "default": "Krul simulator",
                     "constraints": {"minLength": 1, "maxLength": 80},
                 },
                 {
@@ -616,8 +616,8 @@ class KrulSimulator:
         if command == "WHOAMI":
             return {
                 "protocol_version": 4,
-                "device_name": "ARK-PC-SIM",
-                "device_id": "ARK-PC-SIM-01",
+                "device_name": "KRUL-PC-SIM",
+                "device_id": "KRUL-PC-SIM-01",
                 "firmware": "sim-1.0.0",
             }, []
         if command == "CMD_LIST":
@@ -705,7 +705,7 @@ class KrulSimulator:
                 raise ProtocolFailure(3, "ECHO parameter is out of range")
             return {"text": text * count}, []
         if command == "WIDGET_GALLERY":
-            text = params.get("text", "ARK simulator")
+            text = params.get("text", "Krul simulator")
             integer = params.get("integer", 42)
             floating = params.get("floating", 3.3)
             enabled = params.get("enabled", True)
@@ -955,7 +955,7 @@ def main(argv: list[str] | None = None) -> int:
         serve_stream(sys.stdin.buffer, sys.stdout.buffer, simulator)
         return 0
     with SimulatorServer((args.host, args.port), simulator) as server:
-        print(f"ARK Krul simulator listening on {args.host}:{server.server_address[1]}",
+        print(f"Krul simulator listening on {args.host}:{server.server_address[1]}",
               flush=True)
         try:
             server.serve_forever()

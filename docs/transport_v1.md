@@ -21,7 +21,7 @@ stream receivers search for all three magic values.
 | `8 + payload_length` | 2 | CRC-16, `uint16` little-endian |
 
 `payload_length` считает только байты payload. Заголовок и CRC в него не входят.
-Полный размер кадра равен `payload_length + 10`. Допустимый payload ARK имеет
+Полный размер кадра равен `payload_length + 10`. Допустимый payload Krul имеет
 длину от 1 до 10 240 байт.
 
 `KRJ1` содержит один UTF-8 JSON object без `NUL`, CR или LF, добавляемых
@@ -57,6 +57,6 @@ CRC обнаруживает случайные ошибки линии, но н
 первого запроса используется JSON. CVM gateway принимает только `KRJ1`, но
 использует тот же transport v1 framing.
 
-Реализация C находится в независимой библиотеке `Libs/transport` и её
+Реализация C находится в независимой библиотеке `transport` и её
 `krul_transport.h`; Python-реализация GUI и симулятора
 находится в `Python GUI/krul_wire.py`.

@@ -536,8 +536,16 @@ class MainWindow(QMainWindow):
             )
             return
         transaction = message.get("id")
-        pending = self.pending.pop(transaction, None) if isinstance(transaction, int) else None
-        command = pending[0] if pending else None
+        if not isinstance(transaction, int):
+            self._append_terminal("Ответ не содержит целочисленный id", "warning")
+            return
+        pending = self.pending.pop(transaction, None)
+        if pending is None:
+            self._append_terminal(
+                f"Несопоставленный ответ id={transaction}", "warning"
+            )
+            return
+        command = pending[0]
         if not message.get("success", False):
             error = message.get("error", {})
             self._append_terminal(
@@ -585,7 +593,11 @@ class MainWindow(QMainWindow):
             message = {
                 "id": transaction,
                 "success": False,
-                "error": {"code": -1, "message": f"Тайм-аут команды {command}"},
+                "error": {
+                    "code": CLIENT_ERROR_TIMEOUT,
+                    "message": f"Тайм-аут команды {command}",
+                    "source": "client",
+                },
             }
             self._append_terminal(message["error"]["message"], "error")
             self._mark_command_activity(command)
@@ -1281,7 +1293,7 @@ class MainWindow(QMainWindow):
 
 def main() -> int:
     app = QApplication(sys.argv)
-    app.setApplicationName("ARK JSON Control Panel")
+    app.setApplicationName("Starset")
     set_theme(DEFAULT_THEME)
     app.setPalette(application_palette())
     app.setStyleSheet(application_stylesheet())

@@ -1,0 +1,53 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 22,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "PC_Debug",
+      "displayName": "Krul PC Debug",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/PC_Debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "BUILD_TESTING": "ON",
+        "KRUL_BUILD_HOST_TOOLS": "ON",
+        "KRUL_BUILD_DOCS": "ON"
+      }
+    },
+    {
+      "name": "PC_Release",
+      "displayName": "Krul PC Release",
+      "inherits": "PC_Debug",
+      "binaryDir": "${sourceDir}/build/PC_Release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "PC_Debug",
+      "configurePreset": "PC_Debug"
+    },
+    {
+      "name": "PC_Release",
+      "configurePreset": "PC_Release"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "PC_Debug",
+      "configurePreset": "PC_Debug",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "PC_Release",
+      "configurePreset": "PC_Release",
+      "output": { "outputOnFailure": true }
+    }
+  ]
+}

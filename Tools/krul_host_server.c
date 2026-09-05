@@ -560,7 +560,7 @@ int main(int argc, char** argv) {
     krul_server_config_t config = {
         .commands = commands,
         .command_count = KRUL_ARRAY_SIZE(commands),
-        .device_name = "ARK-PC-NATIVE",
+        .device_name = "KRUL-PC-NATIVE",
         .firmware_version = "host-1.0.0",
         .protocol_version = 4U,
         .codec = serde_json(&json),

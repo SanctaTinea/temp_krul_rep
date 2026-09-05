@@ -54,7 +54,7 @@ UI-метаданных сохранена из @ref json_protocol_v3. Верс�
 Пример вызова:
 
 ```json
-{"cmd":"CAN_SEND","id":7,"params":{"channel":1,"id":256,"data":"ARK"}}
+{"cmd":"CAN_SEND","id":7,"params":{"channel":1,"id":256,"data":"demo"}}
 ```
 
 Командные имена, имена полей и строковые поля остаются строками. Krul v4 не

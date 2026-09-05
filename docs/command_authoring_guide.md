@@ -318,7 +318,7 @@ static bool status_handler(const krul_args_t *args, krul_result_t *result, krul_
     "uptime_s": 3600,
     "voltage": 3.294,
     "ready": true,
-    "serial": "ARK-0001"
+    "serial": "DEVICE-0001"
   }
 }
 ```

@@ -1,5 +1,10 @@
+# Standalone checkout fallback. The repository root has the full rule set.
 __pycache__/
 *.py[cod]
 .venv/
-.git/
+venv/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/

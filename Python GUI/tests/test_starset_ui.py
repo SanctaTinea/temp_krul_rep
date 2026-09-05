@@ -35,7 +35,7 @@ def test_starset_worker_supports_framed_simulator(qtbot,
         response = json.loads(received.args[0])
         assert sent.args[0] == len(encode_frame(json.loads(request), wire_format))
         assert sum(received_byte_counts) > 0
-        assert response["result"]["device_name"] == "ARK-PC-SIM"
+        assert response["result"]["device_name"] == "KRUL-PC-SIM"
     finally:
         worker.stop()
         worker.wait(2000)

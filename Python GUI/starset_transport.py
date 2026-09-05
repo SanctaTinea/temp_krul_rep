@@ -26,6 +26,9 @@ CONNECT_SETTLE_MS = 500
 HEARTBEAT_INTERVAL_MS = 1000
 HEARTBEAT_MISS_LIMIT = 3
 
+# Client-only status. It is never serialized as a Krul protocol error code.
+CLIENT_ERROR_TIMEOUT = -1
+
 class SerialWorker(QThread):
     opened = Signal()
     open_failed = Signal(str)
@@ -128,4 +131,3 @@ class SerialWorker(QThread):
             if self._serial is not None and self._serial.is_open:
                 self._serial.close()
             self._serial = None
-

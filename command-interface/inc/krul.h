@@ -42,8 +42,6 @@ extern "C" {
 
 /** Семантические типы полей, поддерживаемые схемами команд Krul. */
 typedef enum {
-    /* Семантические типы KRUL; кодек отображает их на типы своего формата. */
-    // и для приёма и для ответа
     KRUL_TYPE_I32,
     KRUL_TYPE_U32,
     KRUL_TYPE_F32,
@@ -52,13 +50,12 @@ typedef enum {
     KRUL_TYPE_ENUM,
     KRUL_TYPE_ARRAY,
     KRUL_TYPE_OBJECT,
-    KRUL_TYPE_CONSOLE_STRING // думаю, это выкинуть
+    /** Строка результата, которую клиент отображает в консоли с заданной важностью. */
+    KRUL_TYPE_CONSOLE_STRING
 } krul_type_t;
 
 /** Необязательная подсказка отображения поля или команды в UI; не влияет на runtime-проверку. */
 typedef enum {
-    /* Необязательная подсказка GUI, не влияющая на runtime-валидацию. */
-    // позволяет жётско задать каким элементов в GUI будет отображаться поле
     KRUL_WIDGET_DEFAULT,
     KRUL_WIDGET_SLIDER,
     KRUL_WIDGET_SPINBOX,
@@ -78,8 +75,6 @@ typedef enum {
 
 /** Уровень важности событий консоли и журнала. */
 typedef enum {
-    /* Стабильные коды протокольных ошибок, возвращаемые клиенту. */
-    // используется для ивентов с ключём "severity"
     KRUL_CONSOLE_DEBUG,
     KRUL_CONSOLE_INFO,
     KRUL_CONSOLE_WARNING,
@@ -88,7 +83,6 @@ typedef enum {
 
 /** Стабильные коды состояния и ошибок протокола, возвращаемые клиентам. */
 typedef enum {
-    // коды ошибок
     KRUL_OK = 0,
     KRUL_ERROR_MISSING_FIELD = 1,
     KRUL_ERROR_INVALID_TYPE = 2,
@@ -103,16 +97,14 @@ typedef enum {
 
 /** Одно значение в канале связи и его необязательный человекочитаемый заголовок. */
 typedef struct {
-    /* value передаётся по wire, title предназначен только для интерфейса. */
-    // value - стабильный числовой код в JSON/BSON/CBOR и прошивке
-    // title - человекочитаемая подпись для GUI
+    /** Стабильный числовой код в JSON, BSON, CBOR и прошивке. */
     int32_t value;
+    /** Необязательная человекочитаемая подпись для клиентского UI. */
     const char* title;
 } krul_enum_value_t;
 
 /** Хранилище типизированного значения поля по умолчанию. */
 typedef union {
-    // union для значения по-умолчанию. Он универсален
     int32_t i32;
     uint32_t u32;
     float f32;
@@ -130,8 +122,6 @@ typedef struct {
      * direct=false: значение ещё находится в serde_node_t входного сообщения.
      * direct=true: проверяется готовое значение default/result из объединения value.
      */
-    // Эта штука нужна для пользовательского валидатора. LLM само решило его добавить. В принципе, неплохая идея на будущее
-    // пока не планирую использовать
     serde_codec_t codec;
     serde_node_t node;
     const krul_field_desc_t* desc;

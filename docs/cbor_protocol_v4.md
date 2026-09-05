@@ -19,7 +19,7 @@ Map-ключи остаются без изменений относительн
 | `f32` | IEEE-754 binary32 |
 | boolean | `false` / `true` |
 
-Главное отличие от @ref cbor_protocol_v3: enum кодируется целым `int32`, а не
+Главное отличие от (@ref cbor_protocol_v3): enum кодируется целым `int32`, а не
 text string. `DESCRIBE` также публикует числовые `value` и `default` enum.
 Успешный `PING` содержит только map с `id` и `success`; map `result` отсутствует.
 

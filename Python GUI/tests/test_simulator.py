@@ -18,7 +18,7 @@ def test_discovery_and_stateful_gpio() -> None:
 
     identity = request(simulator, "WHOAMI", 1)
     assert identity["result"]["protocol_version"] == 4
-    assert identity["result"]["device_id"] == "ARK-PC-SIM-01"
+    assert identity["result"]["device_id"] == "KRUL-PC-SIM-01"
 
     commands = request(simulator, "CMD_LIST", 2)["result"]["cmd_name"]
     assert {"PING", "DESCRIBE", "PIN_GET", "PIN_SET", "ECHO"}.issubset(commands)

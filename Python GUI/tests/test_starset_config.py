@@ -8,7 +8,7 @@ from starset_config import DeviceProfileStore
 
 IDENTITY = {
     "protocol_version": 3,
-    "device_name": "ARK",
+    "device_name": "KRUL",
     "device_id": "UID-001",
     "firmware": "1.0.0",
 }
