@@ -65,6 +65,34 @@ def test_developer_mode_shows_session_traffic_and_connection_time(qtbot) -> None
     assert "отключено" in window.developer_stats_label.text()
 
 
+def test_developer_mode_can_force_nogui_commands_visible(qtbot) -> None:
+    window = gui.MainWindow()
+    qtbot.addWidget(window)
+    window.descriptors = {
+        "VISIBLE": {
+            "cmd": "VISIBLE", "title": "Visible", "tab": "Test",
+            "params": [], "result": [],
+        },
+        "HIDDEN": {
+            "cmd": "HIDDEN", "title": "Hidden", "tab": "Test",
+            "params": [], "result": [], "nogui": True,
+        },
+    }
+    window._reset_tabs()
+    window._build_dynamic_tabs()
+    assert "HIDDEN" not in {form.command for form in window.forms}
+
+    window.developer_check.setChecked(True)
+    assert not window.show_nogui_check.isHidden()
+    window.show_nogui_check.setChecked(True)
+    assert "HIDDEN" in {form.command for form in window.forms}
+
+    window.developer_check.setChecked(False)
+    assert window.show_nogui_check.isHidden()
+    assert not window.show_nogui_check.isChecked()
+    assert "HIDDEN" not in {form.command for form in window.forms}
+
+
 def test_command_heading_description_and_group_spacing(qtbot) -> None:
     window = gui.MainWindow()
     qtbot.addWidget(window)
@@ -362,6 +390,35 @@ def test_heartbeat_disconnects_after_three_consecutive_misses(qtbot) -> None:
     assert window.device_label.text() == "МК: связь потеряна"
 
 
+def test_disabling_ping_stops_send_and_resets_state(qtbot) -> None:
+    class HeartbeatWorker:
+        def __init__(self) -> None:
+            self.requests = []
+
+        def send_line(self, line: str) -> None:
+            self.requests.append(json.loads(line))
+
+    window = gui.MainWindow()
+    qtbot.addWidget(window)
+    worker = HeartbeatWorker()
+    window.worker = worker
+
+    window._heartbeat_tick()
+    assert worker.requests[-1]["cmd"] == "PING"
+    assert window._heartbeat_transaction is not None
+
+    window._heartbeat_misses = 2
+    window.heartbeat_check.setChecked(False)
+    assert not window.heartbeat_timer.isActive()
+    assert window._heartbeat_transaction is None
+    assert window._heartbeat_misses == 0
+    assert not window.pending
+
+    window._heartbeat_tick()
+    assert len(worker.requests) == 1
+    window.worker = None
+
+
 def test_spinbox_has_no_arrows_and_combobox_has_visible_arrow() -> None:
     stylesheet = gui.application_stylesheet()
     assert "QSpinBox::up-button" in stylesheet
@@ -636,6 +693,117 @@ def test_gpio_widget_uses_group_as_pair_identifier(qtbot) -> None:
     assert window.command_widget_by_command["REMOTE_GET"].set_command == "REMOTE_SET"
 
 
+def test_target_gpio_uses_numeric_enums_and_direction_field(qtbot) -> None:
+    requests = []
+
+    class FakeWindow:
+        def __init__(self) -> None:
+            self.io_panels = []
+            self.io_panel = None
+
+        def send_request(self, command, params=None, callback=None, timeout=None):
+            requests.append((command, params, callback, timeout))
+            return len(requests)
+
+        def _apply_button_cursors(self, _widget) -> None:
+            return
+
+        def _sync_graph_gpio_inputs(self) -> None:
+            return
+
+        def _gpio_panel_updated(self, _source, _message) -> None:
+            return
+
+    get_descriptor = {
+        "cmd": "PIN_GET",
+        "tab": "GPIO",
+        "title": "Read pins",
+        "widget_hint": "special_gpio",
+        "params": [
+            {
+                "name": "target",
+                "type": "enum",
+                "constraints": {"values": [
+                    {"value": 0, "title": "CVM"},
+                    {"value": 1, "title": "KNUD"},
+                    {"value": 2, "title": "KTPP"},
+                ]},
+            },
+            {"name": "name", "type": "string"},
+        ],
+        "result": [{
+            "name": "pins",
+            "type": "array",
+            "items": {
+                "type": "object",
+                "fields": [
+                    {"name": "name", "type": "string"},
+                    {
+                        "name": "direction",
+                        "type": "enum",
+                        "constraints": {"values": [
+                            {"value": 0, "title": "Input"},
+                            {"value": 1, "title": "Output"},
+                        ]},
+                    },
+                    {"name": "state", "type": "integer"},
+                ],
+            },
+        }],
+    }
+    set_descriptor = {
+        "cmd": "PIN_SET",
+        "tab": "GPIO",
+        "title": "Set output",
+        "widget_hint": "special_gpio",
+        "params": [
+            get_descriptor["params"][0],
+            {"name": "name", "type": "string"},
+            {
+                "name": "state",
+                "type": "enum",
+                "constraints": {"values": [
+                    {"value": 0, "title": "Off"},
+                    {"value": 1, "title": "On"},
+                    {"value": 2, "title": "Toggle"},
+                ]},
+            },
+        ],
+        "result": [],
+    }
+    fake_window = FakeWindow()
+    widget = gui.SpecialGpioCommandWidget(
+        fake_window, [get_descriptor, set_descriptor]
+    )
+    host = widget.create_widget(get_descriptor)
+    assert host is not None
+    qtbot.addWidget(host)
+
+    widget._targets_received(get_descriptor, {
+        "success": True,
+        "result": {"targets": [{"name": "CVM", "available": True}]},
+    })
+    assert requests[-1][0] == "PIN_GET"
+    assert requests[-1][1] == {"target": 0, "name": "ALL"}
+
+    requests[-1][2]({
+        "success": True,
+        "result": {"pins": [
+            {"name": "UART2_EN", "direction": 1, "state": 0},
+        ]},
+    })
+    panel = fake_window.io_panels[0]
+    assert panel.target == 0
+    assert panel.target_label == "CVM"
+    assert panel.cards["UART2_EN"].pin_type == "OUT"
+
+    panel._set_one("UART2_EN", 1)
+    assert requests[-1][0] == "PIN_SET"
+    assert requests[-1][1] == {
+        "target": 0, "name": "UART2_EN", "state": 1,
+    }
+
+
 def test_invalid_gpio_group_does_not_disable_valid_pair(qtbot) -> None:
     window = gui.MainWindow()
     qtbot.addWidget(window)
@@ -802,6 +970,11 @@ def test_gpio_action_buttons_show_pending_color(qtbot) -> None:
     )
     qtbot.addWidget(panel)
 
+    assert panel.read_inputs_button.focusPolicy() == Qt.NoFocus
+    assert panel.read_outputs_button.focusPolicy() == Qt.NoFocus
+    assert panel.activate_all_button.focusPolicy() == Qt.NoFocus
+    assert panel.deactivate_all_button.focusPolicy() == Qt.NoFocus
+
     qtbot.mouseClick(panel.read_outputs_button, Qt.LeftButton)
     assert panel.read_outputs_button.property("commandPending") is True
     assert not panel.read_outputs_button.isEnabled()
@@ -817,6 +990,37 @@ def test_gpio_action_buttons_show_pending_color(qtbot) -> None:
     callback({"success": True, "result": {"name": "ALL", "state": 1}})
     assert panel.activate_all_button.property("commandPending") is False
     assert not panel.cards["LED"].switch.is_pending()
+
+
+def test_read_inputs_does_not_move_parent_scroll_area(qtbot) -> None:
+    scroll = gui.QScrollArea()
+    scroll.setWidgetResizable(True)
+    body = gui.QWidget()
+    layout = gui.QVBoxLayout(body)
+    top = gui.QWidget()
+    top.setFixedHeight(700)
+    layout.addWidget(top)
+    panel = gui.IOPanel(
+        [{"name": "BUTTON", "type": "IN", "state": 0}],
+        lambda *_args: 1,
+        use_internal_scroll=False,
+    )
+    layout.addWidget(panel)
+    bottom = gui.QWidget()
+    bottom.setFixedHeight(700)
+    layout.addWidget(bottom)
+    scroll.setWidget(body)
+    scroll.resize(500, 320)
+    qtbot.addWidget(scroll)
+    scroll.show()
+    scroll.ensureWidgetVisible(panel.read_inputs_button)
+    qtbot.wait(20)
+    position = scroll.verticalScrollBar().value()
+
+    qtbot.mouseClick(panel.read_inputs_button, Qt.LeftButton)
+    qtbot.wait(20)
+
+    assert scroll.verticalScrollBar().value() == position
 
 
 def test_set_all_uses_one_compact_request_and_updates_outputs(qtbot) -> None:
@@ -857,7 +1061,7 @@ def test_target_set_all_uses_one_gateway_request(qtbot) -> None:
 
     assert len(sent) == 1
     assert sent[0][0] == "PIN_SET"
-    assert sent[0][1] == {"target": "KNUD", "name": "ALL", "state": "0"}
+    assert sent[0][1] == {"target": "KNUD", "name": "ALL", "state": 0}
 
 
 def test_poll_outputs_reads_only_outputs_in_one_request(qtbot) -> None:

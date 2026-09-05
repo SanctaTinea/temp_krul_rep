@@ -147,8 +147,10 @@ def test_boolean_result_uses_success_and_fail_labels(qtbot) -> None:
     qtbot.addWidget(label)
     label.setValue(True)
     assert label.text() == "SUCCESS"
+    assert "margin-right: 10px" in label.styleSheet()
     label.setValue(False)
     assert label.text() == "FAIL"
+    assert "margin-right: 10px" in label.styleSheet()
 
 
 def test_special_pwm_widget_sends_unified_command(qtbot) -> None:
